@@ -1,0 +1,52 @@
+---
+layout: ""
+page_title: "Courier Provider"
+description: The Courier provider for Terraform is a plugin that handles the Traditional Deployments, which means you can consume Courier to deliver a Web Application artifact to the related Web Server.
+---
+
+# Courier Provider
+
+The Courier provider for Terraform is a plugin that handles the Traditional Deployments, which means you can consume Courier to deliver a Web Application artifact to the related Web Server.
+
+## Example Usage
+
+```terraform
+terraform {
+  required_providers {
+    courier = {
+      source = "seal-io/courier"
+    }
+  }
+}
+
+provider "courier" {}
+
+resource "courier_artifact" "example" {
+  refer = {
+    uri = "https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war"
+  }
+  
+  runtime = "tomcat"
+  ports   = [80, 443]
+}
+
+resource "courier_target" "example" {
+  host  = {
+    address = "..."
+    authn   = {
+      type   = "ssh"
+      user   = "root"
+      secret = "..."
+    }
+    insecure = true
+  }
+}
+
+resource "courier_deployment" "example" {
+  artifact = courier_artifact.example
+  target   = courier_target.example
+}
+
+```
+
+{{ .SchemaMarkdown | trimspace }}
