@@ -46,15 +46,15 @@ type (
 )
 
 func NewProvider() provider.Provider {
-	return Provider{}
+	return &Provider{}
 }
 
-func (p Provider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *Provider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = ProviderType
 	resp.Version = version.Version
 }
 
-func (p Provider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *Provider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: `Deliver a Web Application artifact to the related Web Server.`,
 		Attributes: map[string]schema.Attribute{
@@ -123,11 +123,10 @@ type ProviderConfig struct {
 	RuntimeClasses runtime.Classes
 }
 
-func (p Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	config := p
+func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var config Provider
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -163,7 +162,6 @@ func (p Provider) Configure(ctx context.Context, req provider.ConfigureRequest, 
 		Source:   config.Runtime.Source.ValueString(),
 		Insecure: config.Runtime.Insecure.ValueBool(),
 	}
-
 	if au := config.Runtime.Authn; au != nil {
 		opts.Authn = runtime.ExternalSourceOptionAuthn{
 			Type:   au.Type.ValueString(),
@@ -194,17 +192,20 @@ func (p Provider) Configure(ctx context.Context, req provider.ConfigureRequest, 
 		return
 	}
 
-	resp.ResourceData = ProviderConfig{
+	cfg := ProviderConfig{
 		RuntimeSource:  src,
 		RuntimeClasses: clz,
 	}
+
+	resp.DataSourceData = cfg
+	resp.ResourceData = cfg
 }
 
-func (p Provider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *Provider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return nil
 }
 
-func (p Provider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *Provider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewResourceDeployment,
 		NewResourceArtifact,

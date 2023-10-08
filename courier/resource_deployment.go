@@ -34,6 +34,8 @@ import (
 	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
+var _ resource.ResourceWithConfigure = (*ResourceDeployment)(nil)
+
 type (
 	ResourceDeployment struct {
 		_ProviderConfig ProviderConfig
@@ -78,7 +80,7 @@ func NewResourceDeployment() resource.Resource {
 	return &ResourceDeployment{}
 }
 
-func (r ResourceDeployment) Equal(l ResourceDeployment) bool {
+func (r *ResourceDeployment) Equal(l ResourceDeployment) bool {
 	if !r.Artifact.Equal(l.Artifact) {
 		return false
 	}
@@ -112,11 +114,11 @@ func (r ResourceDeployment) Equal(l ResourceDeployment) bool {
 	return true
 }
 
-func (r ResourceDeployment) Hash() string {
+func (r *ResourceDeployment) Hash() string {
 	return strx.Sum(r.Artifact.Hash())
 }
 
-func (r ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeploymentArtifact) diag.Diagnostics {
+func (r *ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeploymentArtifact) diag.Diagnostics {
 	hosts, diags := reflectHosts(ctx, r.Targets)
 	if diags.HasError() {
 		return diags
@@ -182,7 +184,7 @@ func (r ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeployme
 	return diags
 }
 
-func (r ResourceDeployment) Release(ctx context.Context) diag.Diagnostics {
+func (r *ResourceDeployment) Release(ctx context.Context) diag.Diagnostics {
 	hosts, diags := reflectHosts(ctx, r.Targets)
 	if diags.HasError() {
 		return diags
@@ -223,7 +225,8 @@ func setup(
 			h := hosts[i]
 			g.Go(func() error {
 				// TODO, avoid upload runtime if already exists.
-				return h.UploadDirectory(ctx,
+				return h.UploadDirectory(
+					ctx,
 					cfg.RuntimeSource,
 					"/opt/courier/runtime")
 			})
@@ -595,7 +598,7 @@ func (r ResourceDeploymentStrategyRolling) Equal(l ResourceDeploymentStrategyRol
 	return r.MaxSurge.Equal(l.MaxSurge)
 }
 
-func (r ResourceDeployment) Metadata(
+func (r *ResourceDeployment) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
@@ -603,7 +606,7 @@ func (r ResourceDeployment) Metadata(
 	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "deployment"}, "_")
 }
 
-func (r ResourceDeployment) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceDeployment) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: `Specify how to deploy.`,
 		Attributes: map[string]schema.Attribute{
@@ -877,7 +880,7 @@ either "recreate" or "rolling".`,
 	}
 }
 
-func (r ResourceDeployment) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -909,10 +912,10 @@ func (r ResourceDeployment) Create(ctx context.Context, req resource.CreateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r ResourceDeployment) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceDeployment) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 }
 
-func (r ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -967,7 +970,7 @@ func (r ResourceDeployment) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Delete(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -997,11 +1000,6 @@ func (r *ResourceDeployment) Configure(
 	resp *resource.ConfigureResponse,
 ) {
 	if req.ProviderData == nil {
-		resp.Diagnostics.Append(diag.NewErrorDiagnostic(
-			"Invalid Provider Config",
-			"Cannot find provider config",
-		))
-
 		return
 	}
 

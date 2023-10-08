@@ -63,11 +63,11 @@ func NewResourceArtifact() resource.Resource {
 	return &ResourceArtifact{}
 }
 
-func (r ResourceArtifact) Equal(l ResourceArtifact) bool {
+func (r *ResourceArtifact) Equal(l ResourceArtifact) bool {
 	return r.Refer.Equal(l.Refer) && r.Runtime.Equal(l.Runtime)
 }
 
-func (r ResourceArtifact) Hash() string {
+func (r *ResourceArtifact) Hash() string {
 	return strx.Sum(r.Refer.Hash(), r.Runtime.ValueString())
 }
 
@@ -126,11 +126,15 @@ func (r ResourceArtifactRefer) Reflect(_ context.Context) (artifact.Refer, error
 	return artifact.NewPackage(opts)
 }
 
-func (r ResourceArtifact) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceArtifact) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "artifact"}, "_")
 }
 
-func (r ResourceArtifact) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceArtifact) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: `Specify the artifact to deploy.`,
 		Attributes: map[string]schema.Attribute{
@@ -215,7 +219,6 @@ func (r ResourceArtifact) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
 				Create: true,
-				Read:   true,
 				Update: true,
 			}),
 			"id": schema.StringAttribute{
@@ -240,7 +243,7 @@ may not be available for all types of artifact.`,
 	}
 }
 
-func (r ResourceArtifact) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceArtifact) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -281,10 +284,10 @@ func (r ResourceArtifact) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r ResourceArtifact) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceArtifact) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 }
 
-func (r ResourceArtifact) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceArtifact) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -307,7 +310,7 @@ func (r ResourceArtifact) Update(ctx context.Context, req resource.UpdateRequest
 		(*resource.CreateResponse)(resp))
 }
 
-func (r ResourceArtifact) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceArtifact) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
 func (r *ResourceArtifact) Configure(
@@ -316,11 +319,6 @@ func (r *ResourceArtifact) Configure(
 	resp *resource.ConfigureResponse,
 ) {
 	if req.ProviderData == nil {
-		resp.Diagnostics.Append(diag.NewErrorDiagnostic(
-			"Invalid Provider Config",
-			"Cannot find provider config",
-		))
-
 		return
 	}
 

@@ -69,11 +69,11 @@ func NewResourceTarget() resource.Resource {
 	return &ResourceTarget{}
 }
 
-func (r ResourceTarget) Equal(l ResourceTarget) bool {
+func (r *ResourceTarget) Equal(l ResourceTarget) bool {
 	return r.Host.Equal(l.Host)
 }
 
-func (r ResourceTarget) Hash() string {
+func (r *ResourceTarget) Hash() string {
 	return r.Host.Hash()
 }
 
@@ -155,11 +155,11 @@ func (r ResourceTargetHostProxy) Hash() string {
 	return strx.Sum(r.Address.ValueString())
 }
 
-func (r ResourceTarget) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceTarget) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "target"}, "_")
 }
 
-func (r ResourceTarget) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceTarget) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: `Specify the target to deploy.`,
 		Attributes: map[string]schema.Attribute{
@@ -298,7 +298,7 @@ either password or private key.`,
 	}
 }
 
-func (r ResourceTarget) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceTarget) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -330,10 +330,10 @@ func (r ResourceTarget) Create(ctx context.Context, req resource.CreateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r ResourceTarget) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceTarget) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 }
 
-func (r ResourceTarget) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceTarget) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	if _, ok := ctx.Deadline(); !ok {
 		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
 		resp.Diagnostics.Append(diags...)
@@ -356,7 +356,7 @@ func (r ResourceTarget) Update(ctx context.Context, req resource.UpdateRequest, 
 		(*resource.CreateResponse)(resp))
 }
 
-func (r ResourceTarget) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceTarget) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
 func (r *ResourceTarget) Configure(
@@ -365,11 +365,6 @@ func (r *ResourceTarget) Configure(
 	resp *resource.ConfigureResponse,
 ) {
 	if req.ProviderData == nil {
-		resp.Diagnostics.Append(diag.NewErrorDiagnostic(
-			"Invalid Provider Config",
-			"Cannot find provider config",
-		))
-
 		return
 	}
 
