@@ -11,7 +11,7 @@ type (
 	FileReadCloser      = io.ReadCloser
 	DirectoryReader     = fs.FS
 	DirectoryReadCloser = interface {
-		fs.FS
+		fs.ReadDirFS
 		io.Closer
 	}
 

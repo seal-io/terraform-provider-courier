@@ -68,22 +68,23 @@ func (p Provider) Schema(ctx context.Context, req provider.SchemaRequest, resp *
 only support a git repository at present.
 
   - For example:
-	  - https://github.com/foo/bar, clone the HEAD commit of the default branch.
-      - https://github.com/foo/bar//subpath, clone the HEAD commit of the default branch, 
-        and use the subdirectory.
-      - https://github.com/foo/bar?ref=dev, clone the "dev" commit.
+    - https://github.com/foo/bar, clone the HEAD commit of the default branch.
+    - https://github.com/foo/bar//subpath, clone the HEAD commit of the default branch, 
+      and use the subdirectory.
+    - https://github.com/foo/bar?ref=dev, clone the "dev" commit.
   - Comply with the following structure:
-	  /tomcat     	   # the name of the runtime.
-        /linux         # the os supported by the runtime.
-          /service.sh  # the POSIX shell script, must name as service.sh.
-            setup
-            start
-            state
-            stop
-            cleanup
-        /windows
-          /service.ps1 # the PowerShell script, must name as service.ps1.
-`,
+` + "    ```" + `
+    /tomcat     	 # the name of the runtime.
+      /linux         # the os supported by the runtime.
+        /service.sh  # the POSIX shell script, must name as service.sh.
+          setup
+          start
+          state
+          stop
+          cleanup
+      /windows
+        /service.ps1 # the PowerShell script, must name as service.ps1.
+` + "    ```",
 					},
 					"authn": schema.SingleNestedAttribute{
 						Optional:    true,

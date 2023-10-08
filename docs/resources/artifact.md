@@ -15,73 +15,83 @@ Specify the artifact to deploy.
 ```terraform
 variable "artifact_refer_uri" {
   type        = string
+  description = "The URI of the artifact to be pulled."
   default     = "https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war"
-  description = "The URI of the artifact to be deployed."
 }
 
 variable "artifact_refer_authn_type" {
   type        = string
-  default     = null
   description = "The type of authentication to be used for pulling the artifact."
+  default     = ""
+
+  validation {
+    condition     = length(var.artifact_refer_authn_type) == 0 || contains(["basic", "bearer"], var.artifact_refer_authn_type)
+    error_message = "Invalid artifact authentication type, must be one of `basic` or `bearer`."
+  }
 }
 
 variable "artifact_refer_authn_user" {
   type        = string
-  default     = ""
   description = "The username of the authentication to be used for pulling the artifact."
+  default     = ""
 }
 
 variable "artifact_refer_authn_secret" {
   type        = string
-  default     = ""
   description = "The secret of the authentication to be used for pulling the artifact, either password or token."
+  default     = ""
 }
 
 variable "artifact_refer_insecure" {
   type        = bool
-  default     = true
   description = "Whether to skip TLS verification when pulling the artifact."
+  default     = true
 }
 
 variable "artifact_runtime" {
   type        = string
-  default     = "tomcat"
   description = "The runtime of the artifact to be deployed."
+  default     = "tomcat"
+
+  validation {
+    condition     = contains(["tomcat", "openjdk", "docker"], var.artifact_runtime)
+    error_message = "Invalid artifact runtime, must be one of `tomcat`, `openjdk` or `docker`."
+  }
 }
 
 variable "artifact_command" {
   type        = string
-  default     = ""
   description = "The command to start the artifact."
+  default     = ""
 }
 
 variable "artifact_ports" {
   type        = list(number)
-  default     = [443, 80]
   description = "The ports to be exposed by the artifact."
+  default     = null
 }
 
 variable "artifact_envs" {
   type        = map(string)
-  default     = null
   description = "The environment variables to be set for the artifact."
+  default     = null
 }
 
 variable "artifact_volumes" {
   type        = list(string)
-  default     = null
   description = "The volumes to be mounted for the artifact."
+  default     = null
 }
 
 resource "courier_artifact" "example" {
   refer = {
     uri   = var.artifact_refer_uri
-    authn = var.artifact_refer_authn_type ? {
+    authn = length(var.artifact_refer_authn_type) > 0 ? {
       type   = var.artifact_refer_authn_type
       user   = var.artifact_refer_authn_user
       secret = var.artifact_refer_authn_secret
     } : null
-    insecure = true
+    insecure = var.artifact_refer_insecure
   }
 
   runtime = var.artifact_runtime
@@ -154,7 +164,6 @@ Optional:
 Optional:
 
 - `create` (String)
-- `read` (String)
 - `update` (String)
 
 

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -50,25 +51,22 @@ func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, err
 	}
 
 	var subpath string
-
 	srcURL.Path, subpath, _ = strings.Cut(srcURL.Path, "//")
 
-	cloneOpts := &git.CloneOptions{
+	var ref string
+	if q := srcURL.Query(); q != nil {
+		ref = q.Get("ref")
+		q.Del("ref")
+
+		srcURL.RawQuery = q.Encode()
+	}
+
+	cloneOpts := git.CloneOptions{
 		Depth:           1,
 		Progress:        progress(func(p []byte) { tflog.Debug(ctx, string(p)) }),
 		InsecureSkipTLS: opts.Insecure,
+		URL:             srcURL.String(),
 	}
-
-	if q := srcURL.Query(); q != nil {
-		ref := q.Get("ref")
-		if ref != "" {
-			cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(ref)
-		}
-
-		srcURL.RawQuery = ""
-	}
-
-	cloneOpts.URL = srcURL.String()
 
 	switch au := opts.Authn; au.Type {
 	case "basic":
@@ -82,7 +80,25 @@ func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, err
 		}
 	}
 
-	r, err := git.PlainCloneContext(ctx, osx.TempDir("courier-"), false, cloneOpts)
+	var cloneOptsSlice []git.CloneOptions
+	if ref != "" {
+		cloneOpts1 := cloneOpts
+		cloneOpts1.ReferenceName = plumbing.NewBranchReferenceName(ref)
+		cloneOptsSlice = append(cloneOptsSlice, cloneOpts1)
+		cloneOpts2 := cloneOpts
+		cloneOpts2.ReferenceName = plumbing.NewTagReferenceName(ref)
+		cloneOptsSlice = append(cloneOptsSlice, cloneOpts2)
+	} else {
+		cloneOptsSlice = append(cloneOptsSlice, cloneOpts)
+	}
+
+	var r *git.Repository
+	for i := range cloneOptsSlice {
+		r, err = git.PlainCloneContext(ctx, osx.TempDir("courier-"), false, &cloneOptsSlice[i])
+		if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			break
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone git external source: %w", err)
 	}
@@ -93,7 +109,6 @@ func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, err
 	}
 
 	wtDir := wt.Filesystem
-
 	if subpath != "" {
 		wtDir, err = wtDir.Chroot(subpath)
 		if err != nil {
@@ -116,13 +131,26 @@ type directory struct {
 	wtDir billy.Filesystem
 }
 
-func (d directory) Open(path string) (fs.File, error) {
-	f, err := d.wtDir.Open(path)
+func (d directory) Open(name string) (fs.File, error) {
+	f, err := d.wtDir.Open(name)
 	if err != nil {
 		return nil, err
 	}
 
 	return file{File: f, wtDir: d.wtDir}, nil
+}
+
+func (d directory) ReadDir(name string) ([]fs.DirEntry, error) {
+	ds, err := d.wtDir.ReadDir(name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]fs.DirEntry, len(ds))
+	for i := range ds {
+		r[i] = fs.FileInfoToDirEntry(ds[i])
+	}
+	return r, nil
 }
 
 type file struct {

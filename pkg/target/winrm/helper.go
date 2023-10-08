@@ -82,6 +82,15 @@ func (ft *fileTransport) Open(path string) (fs.File, error) {
 	}, nil
 }
 
+func (ft *fileTransport) ReadDir(path string) ([]fs.DirEntry, error) {
+	if path == "" {
+		return nil, errors.New("blank path")
+	}
+
+	// TODO(thxCode): implement this.
+	return nil, nil
+}
+
 func (ft *fileTransport) MkdirAll(path string) error {
 	if path == "" {
 		return errors.New("blank path")
@@ -204,7 +213,7 @@ func (f *readonlyFile) Name() string {
 }
 
 func (f *readonlyFile) Read(p []byte) (int, error) {
-	// TODO.
+	// TODO(thxCode): implement this.
 	return 0, io.EOF
 }
 

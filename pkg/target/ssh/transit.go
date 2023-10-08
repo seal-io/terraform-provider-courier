@@ -159,6 +159,19 @@ func (d directory) Open(name string) (fs.File, error) {
 	return d.ft.Open(name)
 }
 
+func (d directory) ReadDir(name string) ([]fs.DirEntry, error) {
+	ds, err := d.ft.ReadDir(name)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]fs.DirEntry, len(ds))
+	for i := range ds {
+		r[i] = fs.FileInfoToDirEntry(ds[i])
+	}
+	return r, nil
+}
+
 func (h *Host) DownloadDirectory(ctx context.Context, from string) (types.DirectoryReadCloser, error) {
 	if from == "" {
 		return nil, errors.New("blank remote directory path")
