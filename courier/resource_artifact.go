@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/artifact"
 	"github.com/seal-io/terraform-provider-courier/utils/strx"
@@ -244,18 +245,6 @@ may not be available for all types of artifact.`,
 }
 
 func (r *ResourceArtifact) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-
 	var plan ResourceArtifact
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -275,10 +264,22 @@ func (r *ResourceArtifact) Create(ctx context.Context, req resource.CreateReques
 		))
 	}
 
-	// State.
-	resp.Diagnostics.Append(plan.State(ctx)...)
-	if resp.Diagnostics.HasError() {
-		return
+	{
+		// Get Timeout.
+		timeout, diags := plan.Timeouts.Create(ctx, 10*time.Minute)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// State.
+		resp.Diagnostics.Append(plan.State(ctx)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -288,26 +289,47 @@ func (r *ResourceArtifact) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *ResourceArtifact) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
+	var plan, state ResourceArtifact
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan._ProviderConfig = r._ProviderConfig
+	plan.ID = types.StringValue(plan.Hash())
+
+	// Validate.
+	if !r._ProviderConfig.RuntimeClasses.HasRuntime(plan.Runtime.ValueString()) {
+		resp.Diagnostics.Append(diag.NewAttributeErrorDiagnostic(
+			path.Root("runtime"),
+			"Unknown Runtime",
+			fmt.Sprintf("Cannot find the runtime %s from config", plan.Runtime.ValueString()),
+		))
+	}
+
+	if !plan.Equal(state) {
+		tflog.Debug(ctx, "Changed, stating again...")
+
+		// Get Timeout.
+		timeout, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
+
+		// State.
+		resp.Diagnostics.Append(plan.State(ctx)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
-	r.Create(
-		ctx,
-		resource.CreateRequest{
-			Config:       req.Config,
-			Plan:         req.Plan,
-			ProviderMeta: req.ProviderMeta,
-		},
-		(*resource.CreateResponse)(resp))
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *ResourceArtifact) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

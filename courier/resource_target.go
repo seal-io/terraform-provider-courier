@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/target"
 	"github.com/seal-io/terraform-provider-courier/utils/strx"
@@ -299,18 +300,6 @@ either password or private key.`,
 }
 
 func (r *ResourceTarget) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-
 	var plan ResourceTarget
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -321,10 +310,22 @@ func (r *ResourceTarget) Create(ctx context.Context, req resource.CreateRequest,
 	plan._ProviderConfig = r._ProviderConfig
 	plan.ID = types.StringValue(plan.Hash())
 
-	// State.
-	resp.Diagnostics.Append(plan.State(ctx)...)
-	if resp.Diagnostics.HasError() {
-		return
+	{
+		// Get Timeout.
+		timeout, diags := plan.Timeouts.Create(ctx, 10*time.Minute)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// State.
+		resp.Diagnostics.Append(plan.State(ctx)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -334,26 +335,38 @@ func (r *ResourceTarget) Read(ctx context.Context, req resource.ReadRequest, res
 }
 
 func (r *ResourceTarget) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
+	var plan, state ResourceTarget
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan._ProviderConfig = r._ProviderConfig
+	plan.ID = types.StringValue(plan.Hash())
+
+	if !plan.Equal(state) {
+		tflog.Debug(ctx, "Changed, stating again...")
+
+		// Get Timeout.
+		timeout, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
+
+		// State.
+		resp.Diagnostics.Append(plan.State(ctx)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
-	r.Create(
-		ctx,
-		resource.CreateRequest{
-			Config:       req.Config,
-			Plan:         req.Plan,
-			ProviderMeta: req.ProviderMeta,
-		},
-		(*resource.CreateResponse)(resp))
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *ResourceTarget) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -350,8 +350,8 @@ func setup(
 
 		if err := g.Wait(); err != nil {
 			diags.Append(diag.NewErrorDiagnostic(
-				"Cannot upload runtime",
-				fmt.Sprintf("Cannot upload runtime: %v", err),
+				"Cannot upload artifact",
+				fmt.Sprintf("Cannot upload artifact: %v", err),
 			))
 
 			return diags
@@ -881,18 +881,6 @@ either "recreate" or "rolling".`,
 }
 
 func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-
 	var plan ResourceDeployment
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -903,10 +891,22 @@ func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequ
 	plan._ProviderConfig = r._ProviderConfig
 	plan.ID = types.StringValue(plan.Hash())
 
-	// Apply.
-	resp.Diagnostics.Append(plan.Apply(ctx, nil)...)
-	if resp.Diagnostics.HasError() {
-		return
+	{
+		// Get timeout.
+		timeout, diags := plan.Timeouts.Create(ctx, 10*time.Minute)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// Apply.
+		resp.Diagnostics.Append(plan.Apply(ctx, nil)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -916,18 +916,6 @@ func (r *ResourceDeployment) Read(ctx context.Context, req resource.ReadRequest,
 }
 
 func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Update(ctx, 30*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-
 	var plan, state ResourceDeployment
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -940,6 +928,9 @@ func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequ
 	plan.ID = types.StringValue(plan.Hash())
 
 	if !plan.Equal(state) {
+		tflog.Debug(ctx, "Changed, applying again...")
+
+		// Diff.
 		planTargetsIndex := make(map[string]struct{}, len(plan.Targets))
 		for i := range plan.Targets {
 			planTargetsIndex[plan.Targets[i].ID.ValueString()] = struct{}{}
@@ -952,6 +943,16 @@ func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequ
 			}
 			releaseTargets = append(releaseTargets, state.Targets[i])
 		}
+
+		// Get Timeout.
+		timeout, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 
 		// Release.
 		state.Targets = releaseTargets
@@ -971,18 +972,6 @@ func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 func (r *ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	if _, ok := ctx.Deadline(); !ok {
-		timeout, diags := r.Timeouts.Delete(ctx, 30*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-
 	var state ResourceDeployment
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -990,8 +979,21 @@ func (r *ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
+	// Get Timeout.
+	timeout, diags := state.Timeouts.Delete(ctx, 10*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	// Release.
 	resp.Diagnostics.Append(state.Release(ctx)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (r *ResourceDeployment) Configure(
