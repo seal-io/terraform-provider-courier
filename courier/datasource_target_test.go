@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccResourceTarget_basic(t *testing.T) {
+func TestAccDataSourceTarget_basic(t *testing.T) {
 	// Start virtual machines.
 	ctx := context.TODO()
 
@@ -34,7 +34,10 @@ func TestAccResourceTarget_basic(t *testing.T) {
 	defer func() {
 		err = mp.Stop(t, ctx)
 		if err != nil {
-			t.Errorf("failed to stop virtual machines via multipass: %v", err)
+			t.Errorf(
+				"failed to stop virtual machines via multipass: %v",
+				err,
+			)
 		}
 	}()
 
@@ -45,7 +48,7 @@ func TestAccResourceTarget_basic(t *testing.T) {
 		return
 	}
 
-	resourceName := "courier_target.test"
+	resourceName := "data.courier_target.test"
 	resourceConfig := `
 variable "hosts" {
   type = list(string)
@@ -60,7 +63,7 @@ variable "secret" {
   sensitive = true
 }
 
-resource "courier_target" "test" {
+data "courier_target" "test" {
   count = length(var.hosts)
   
   host = {
@@ -76,7 +79,7 @@ resource "courier_target" "test" {
 `
 
 	resource.Test(t, resource.TestCase{
-		IDRefreshName:            resourceName,
+		IDRefreshIgnore:          []string{resourceName},
 		ProtoV6ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -93,11 +96,31 @@ resource "courier_target" "test" {
 					"secret": config.StringVariable(priKey),
 				},
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName+".1", "host.address", hosts[1]),
-					resource.TestCheckResourceAttr(resourceName+".0", "host.authn.type", "ssh"),
-					resource.TestCheckResourceAttr(resourceName+".2", "host.authn.secret", priKey),
-					resource.TestCheckResourceAttr(resourceName+".1", "os", "linux"),
-					resource.TestCheckResourceAttr(resourceName+".2", "arch", "arm64"),
+					resource.TestCheckResourceAttr(
+						resourceName+".1",
+						"host.address",
+						hosts[1],
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".0",
+						"host.authn.type",
+						"ssh",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".2",
+						"host.authn.secret",
+						priKey,
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".1",
+						"os",
+						"linux",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".2",
+						"arch",
+						"arm64",
+					),
 				),
 			},
 			{
@@ -114,11 +137,31 @@ resource "courier_target" "test" {
 					"secret": config.StringVariable("ansible"),
 				},
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName+".1", "host.address", hosts[1]),
-					resource.TestCheckResourceAttr(resourceName+".0", "host.authn.type", "ssh"),
-					resource.TestCheckResourceAttr(resourceName+".2", "host.authn.secret", "ansible"),
-					resource.TestCheckResourceAttr(resourceName+".2", "os", "linux"),
-					resource.TestCheckResourceAttr(resourceName+".1", "arch", "arm64"),
+					resource.TestCheckResourceAttr(
+						resourceName+".1",
+						"host.address",
+						hosts[1],
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".0",
+						"host.authn.type",
+						"ssh",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".2",
+						"host.authn.secret",
+						"ansible",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".2",
+						"os",
+						"linux",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName+".1",
+						"arch",
+						"arm64",
+					),
 				),
 			},
 		},

@@ -42,14 +42,6 @@ variable "deployment_progress_timeout" {
 }
 
 resource "courier_deployment" "example" {
-  artifact = {
-    id    = "..."
-    refer = {
-      uri = "..."
-    }
-    runtime = "..."
-  }
-
   targets = [
     {
       id   = "..."
@@ -63,6 +55,19 @@ resource "courier_deployment" "example" {
       }
     }
   ]
+
+  runtime = {
+    id    = "..."
+    class = "..."
+  }
+
+  artifact = {
+    id    = "..."
+    refer = {
+      uri = "..."
+    }
+    runtime = "..."
+  }
 
   strategy = {
     type    = var.deployment_strategy
@@ -85,6 +90,7 @@ resource "courier_deployment" "example" {
 ### Required
 
 - `artifact` (Attributes) The artifact of the deployment. (see [below for nested schema](#nestedatt--artifact))
+- `runtime` (Attributes) The runtime of the deployment. (see [below for nested schema](#nestedatt--runtime))
 - `targets` (Attributes List) The targets of the deployment. (see [below for nested schema](#nestedatt--targets))
 
 ### Optional
@@ -103,7 +109,6 @@ Required:
 
 - `id` (String) The ID of the artifact.
 - `refer` (Attributes) The reference of the artifact. (see [below for nested schema](#nestedatt--artifact--refer))
-- `runtime` (String) The runtime of the artifact.
 
 Optional:
 
@@ -137,6 +142,54 @@ Optional:
 - `type` (String) The type for authentication, either "basic" or "bearer".
 - `user` (String) The user for authentication.
 
+
+
+
+<a id="nestedatt--runtime"></a>
+### Nested Schema for `runtime`
+
+Required:
+
+- `class` (String) Specify the class of the runtime.
+- `id` (String) The ID of the runtime.
+
+Optional:
+
+- `authn` (Attributes) The authentication for fetching the runtime. (see [below for nested schema](#nestedatt--runtime--authn))
+- `insecure` (Boolean) Specify to fetch the runtime with insecure mode.
+- `source` (String) The source to fetch the runtime, 
+only support a git repository at present.
+
+  - For example:
+    - https://github.com/foo/bar, clone the HEAD commit of the default branch.
+    - https://github.com/foo/bar//subpath, clone the HEAD commit of the default branch, 
+      and use the subdirectory.
+    - https://github.com/foo/bar?ref=dev, clone the "dev" commit.
+  - Comply with the following structure:
+    ```
+    /tomcat     	 # the name of the runtime.
+      /linux         # the os supported by the runtime.
+        /service.sh  # the POSIX shell script, must name as service.sh.
+          setup
+          start
+          state
+          stop
+          cleanup
+      /windows
+        /service.ps1 # the PowerShell script, must name as service.ps1.
+    ```
+
+<a id="nestedatt--runtime--authn"></a>
+### Nested Schema for `runtime.authn`
+
+Required:
+
+- `secret` (String, Sensitive) The secret for authentication, either password or token.
+
+Optional:
+
+- `type` (String) The type for authentication, either "basic" or "bearer".
+- `user` (String) The user for authentication.
 
 
 

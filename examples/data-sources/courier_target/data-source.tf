@@ -83,7 +83,7 @@ variable "target_proxies" {
   }
 }
 
-resource "courier_target" "example" {
+data "courier_target" "example" {
   count = length(var.target_addresses)
 
   host = {
@@ -108,7 +108,6 @@ resource "courier_target" "example" {
   }
 
   timeouts = {
-    create = "5m"
-    update = "5m"
+    read = "10m"
   }
 }

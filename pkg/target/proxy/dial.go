@@ -12,7 +12,10 @@ import (
 	"github.com/seal-io/terraform-provider-courier/pkg/target/types"
 )
 
-func Dial(forward types.DialCloser, dialHost types.HostOption) (types.DialCloser, error) {
+func Dial(
+	forward types.DialCloser,
+	dialHost types.HostOption,
+) (types.DialCloser, error) {
 	if forward == nil {
 		forward = types.NopDialCloser(proxy.Direct)
 	}
@@ -39,51 +42,63 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (types.DialCloser
 		})
 
 		// NB(thxCode): Inspired by github.com/hashicorp/terraform/internal/communicator/ssh/http_proxy.go.
-		d := types.DialCloserFunc(func(network, address string) (n net.Conn, err error) {
-			n, err = forward.Dial(network, addr)
-			if err != nil {
-				return nil, err
-			}
-
-			defer func() {
+		d := types.DialCloserFunc(
+			func(network, address string) (n net.Conn, err error) {
+				n, err = forward.Dial(network, addr)
 				if err != nil {
-					_ = n.Close()
+					return nil, err
 				}
-			}()
 
-			err = n.SetDeadline(time.Now().Add(15 * time.Second))
-			if err != nil {
-				return nil, err
-			}
+				defer func() {
+					if err != nil {
+						_ = n.Close()
+					}
+				}()
 
-			req, err := http.NewRequest(http.MethodConnect, address, nil)
-			if err != nil {
-				return nil, err
-			}
+				err = n.SetDeadline(time.Now().Add(15 * time.Second))
+				if err != nil {
+					return nil, err
+				}
 
-			if au != nil {
-				req.SetBasicAuth(au.User, au.Password)
-				req.Header.Add("Proxy-Authorization", req.Header.Get("Authorization"))
-			}
+				req, err := http.NewRequest(
+					http.MethodConnect,
+					address,
+					nil,
+				)
+				if err != nil {
+					return nil, err
+				}
 
-			err = req.Write(n)
-			if err != nil {
-				return nil, err
-			}
+				if au != nil {
+					req.SetBasicAuth(au.User, au.Password)
+					req.Header.Add(
+						"Proxy-Authorization",
+						req.Header.Get("Authorization"),
+					)
+				}
 
-			resp, err := http.ReadResponse(bufio.NewReader(n), req)
-			if err != nil {
-				return nil, err
-			}
+				err = req.Write(n)
+				if err != nil {
+					return nil, err
+				}
 
-			defer func() { _ = resp.Body.Close() }()
+				resp, err := http.ReadResponse(bufio.NewReader(n), req)
+				if err != nil {
+					return nil, err
+				}
 
-			if resp.StatusCode != http.StatusOK {
-				return nil, fmt.Errorf("connection error: status code: %d", resp.StatusCode)
-			}
+				defer func() { _ = resp.Body.Close() }()
 
-			return n, nil
-		})
+				if resp.StatusCode != http.StatusOK {
+					return nil, fmt.Errorf(
+						"connection error: status code: %d",
+						resp.StatusCode,
+					)
+				}
+
+				return n, nil
+			},
+		)
 
 		return d, nil
 	case "socks5", "socks5h":
@@ -91,7 +106,10 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (types.DialCloser
 
 		d, err := proxy.SOCKS5("tcp", addr, au, forward)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create Socks5 proxy: %w", err)
+			return nil, fmt.Errorf(
+				"failed to create Socks5 proxy: %w",
+				err,
+			)
 		}
 
 		return types.NopDialCloser(d), nil

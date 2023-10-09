@@ -34,7 +34,10 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 	defer func() {
 		err = mp.Stop(t, ctx)
 		if err != nil {
-			t.Errorf("failed to stop virtual machines via multipass: %v", err)
+			t.Errorf(
+				"failed to stop virtual machines via multipass: %v",
+				err,
+			)
 		}
 	}()
 
@@ -62,7 +65,7 @@ variable "secret" {
   sensitive = true
 }
 
-resource "courier_target" "test" {
+data "courier_target" "test" {
   count = length(var.hosts)
   
   host = {
@@ -76,18 +79,22 @@ resource "courier_target" "test" {
   }
 }
 
-resource "courier_artifact" "test" {
+data "courier_artifact" "test" {
   refer = {
     uri = "nginx:1.25.2"
   }
 
-  runtime = "docker"
   ports = ["80","443"]
 }
 
+data "courier_runtime" "test" {
+  class = "docker"
+}
+
 resource "courier_deployment" "test" {
-  artifact = courier_artifact.test
-  targets  = courier_target.test
+  artifact = data.courier_artifact.test
+  targets  = data.courier_target.test
+  runtime  = data.courier_runtime.test
 }
 `,
 				ConfigVariables: config.Variables{
@@ -132,7 +139,10 @@ func TestAccResourceDeployment_rolling(t *testing.T) {
 	defer func() {
 		err = mp.Stop(t, ctx)
 		if err != nil {
-			t.Errorf("failed to stop virtual machines via multipass: %v", err)
+			t.Errorf(
+				"failed to stop virtual machines via multipass: %v",
+				err,
+			)
 		}
 	}()
 
@@ -154,7 +164,7 @@ variable "secret" {
   sensitive = true
 }
 
-resource "courier_target" "test" {
+data "courier_target" "test" {
   count = length(var.hosts)
   
   host = {
@@ -168,18 +178,22 @@ resource "courier_target" "test" {
   }
 }
 
-resource "courier_artifact" "test" {
+data "courier_artifact" "test" {
   refer = {
     uri = "https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war"
   }
 
-  runtime = "tomcat"
   ports = ["80","443"]
 }
 
+data "courier_runtime" "test" {
+  class = "tomcat"
+}
+
 resource "courier_deployment" "test" {
-  artifact = courier_artifact.test
-  targets  = courier_target.test
+  artifact = data.courier_artifact.test
+  targets  = data.courier_target.test
+  runtime  = data.courier_runtime.test
   strategy = {
     type = "rolling"
   }
@@ -231,7 +245,12 @@ resource "courier_deployment" "test" {
 						// Reverse hosts.
 						r := make([]config.Variable, 0, len(hosts))
 						for i := range hosts {
-							r = append(r, config.StringVariable(hosts[len(hosts)-i-1]))
+							r = append(
+								r,
+								config.StringVariable(
+									hosts[len(hosts)-i-1],
+								),
+							)
 						}
 						return config.ListVariable(r...)
 					}(),

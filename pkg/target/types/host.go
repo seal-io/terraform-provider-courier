@@ -94,7 +94,9 @@ func (p HostAddressParsed) HostPort(defaultPort int) string {
 	return net.JoinHostPort(p.Host, strconv.Itoa(p.Port))
 }
 
-func (p HostAddressParsed) HostPortFunc(defaultPortFunc func(HostAddressParsed) int) string {
+func (p HostAddressParsed) HostPortFunc(
+	defaultPortFunc func(HostAddressParsed) int,
+) string {
 	if p.Port <= 0 && defaultPortFunc != nil {
 		p.Port = defaultPortFunc(p)
 	}

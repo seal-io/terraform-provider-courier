@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +9,7 @@ import (
 func TestGetClasses(t *testing.T) {
 	cases := []struct {
 		name     string
-		input    fs.FS
+		input    Source
 		expected Classes
 	}{
 		{

@@ -11,7 +11,7 @@ for file in "${ROOT_DIR}/lib/linux/"*; do
   fi
 done
 
-COURIER_PATH="/opt/courier/artifact"
+COURIER_PATH="/var/local/courier/artifact"
 
 #
 # Stages

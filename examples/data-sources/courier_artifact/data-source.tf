@@ -33,17 +33,6 @@ variable "artifact_refer_insecure" {
   default     = true
 }
 
-variable "artifact_runtime" {
-  type        = string
-  description = "The runtime of the artifact to be deployed."
-  default     = "tomcat"
-
-  validation {
-    condition     = contains(["tomcat", "openjdk", "docker"], var.artifact_runtime)
-    error_message = "Invalid artifact runtime, must be one of `tomcat`, `openjdk` or `docker`."
-  }
-}
-
 variable "artifact_command" {
   type        = string
   description = "The command to start the artifact."
@@ -68,7 +57,7 @@ variable "artifact_volumes" {
   default     = null
 }
 
-resource "courier_artifact" "example" {
+data "courier_artifact" "example" {
   refer = {
     uri   = var.artifact_refer_uri
     authn = length(var.artifact_refer_authn_type) > 0 ? {
@@ -79,14 +68,12 @@ resource "courier_artifact" "example" {
     insecure = var.artifact_refer_insecure
   }
 
-  runtime = var.artifact_runtime
   command = var.artifact_command
   ports   = var.artifact_ports
   envs    = var.artifact_envs
   volumes = var.artifact_volumes
 
   timeouts = {
-    create = "5m"
-    update = "5m"
+    read = "10m"
   }
 }

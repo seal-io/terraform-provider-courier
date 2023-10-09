@@ -11,7 +11,7 @@ for file in "${ROOT_DIR}/lib/linux/"*; do
   fi
 done
 
-COURIER_PATH="/opt/courier/artifact"
+COURIER_PATH="/var/local/courier/artifact"
 
 SYSTEMD_PATH="/etc/systemd/system"
 
@@ -85,8 +85,8 @@ setup() {
   ##
   ## Prepare
   ##
-  ${rc} "chmod a+w ${COURIER_PATH}/${art}"
-  ${rc} "chmod a+x ${COURIER_PATH}/${art}/tomcat/bin/*.sh"
+  ${rc} "chown -R $(id -u):$(id -g) ${COURIER_PATH}/${art}"
+  chmod a+x "${COURIER_PATH}/${art}/tomcat/bin/"*.sh
 
   cat <<EOF >"${COURIER_PATH}/${art}/tomcat/conf/server.xml"
 <?xml version="1.0" encoding="UTF-8"?>

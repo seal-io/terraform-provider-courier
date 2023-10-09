@@ -13,7 +13,10 @@ import (
 	"github.com/seal-io/terraform-provider-courier/pkg/target/types"
 )
 
-func Dial(forward types.DialCloser, dialHost types.HostOption) (*ssh.Client, error) {
+func Dial(
+	forward types.DialCloser,
+	dialHost types.HostOption,
+) (*ssh.Client, error) {
 	ap, err := dialHost.ParseAddress()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse proxy address: %w", err)
@@ -27,7 +30,10 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (*ssh.Client, err
 			return nil, fmt.Errorf("failed to connect SSH agent: %w", err)
 		}
 
-		auths = append(auths, ssh.PublicKeysCallback(agent.NewClient(agentConn).Signers))
+		auths = append(
+			auths,
+			ssh.PublicKeysCallback(agent.NewClient(agentConn).Signers),
+		)
 	} else if dialHost.Authn.Secret != "" {
 		pb, _ := pem.Decode([]byte(dialHost.Authn.Secret))
 
@@ -48,12 +54,9 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (*ssh.Client, err
 	}
 
 	cfg := &ssh.ClientConfig{
-		User: dialHost.Authn.User,
-		Auth: auths,
-	}
-
-	if dialHost.Insecure {
-		cfg.HostKeyCallback = ssh.InsecureIgnoreHostKey() //nolint:gosec
+		User:            dialHost.Authn.User,
+		Auth:            auths,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
 	}
 
 	addr := ap.HostPort(22)
@@ -69,7 +72,10 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (*ssh.Client, err
 
 	conn, nextCh, nextReq, err := ssh.NewClientConn(prevConn, addr, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH client connection: %w", err)
+		return nil, fmt.Errorf(
+			"failed to create SSH client connection: %w",
+			err,
+		)
 	}
 
 	return ssh.NewClient(conn, nextCh, nextReq), nil

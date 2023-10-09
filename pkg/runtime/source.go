@@ -18,16 +18,18 @@ import (
 	"github.com/seal-io/terraform-provider-courier/utils/osx"
 )
 
+type Source = fs.ReadDirFS
+
 //go:embed source_builtin/*
 var builtin embed.FS
 
-func BuiltinSource() fs.FS {
+func BuiltinSource() Source {
 	d, err := fs.Sub(builtin, "source_builtin")
 	if err != nil {
 		panic(fmt.Errorf("failed to get builtin source: %w", err))
 	}
 
-	return d
+	return d.(fs.ReadDirFS)
 }
 
 type (
@@ -44,10 +46,16 @@ type (
 	}
 )
 
-func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, error) {
+func ExternalSource(
+	ctx context.Context,
+	opts ExternalSourceOptions,
+) (Source, error) {
 	srcURL, err := url.Parse(opts.Source)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse external source URL: %w", err)
+		return nil, fmt.Errorf(
+			"failed to parse external source URL: %w",
+			err,
+		)
 	}
 
 	var subpath string
@@ -62,8 +70,10 @@ func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, err
 	}
 
 	cloneOpts := git.CloneOptions{
-		Depth:           1,
-		Progress:        progress(func(p []byte) { tflog.Debug(ctx, string(p)) }),
+		Depth: 1,
+		Progress: progress(
+			func(p []byte) { tflog.Debug(ctx, string(p)) },
+		),
 		InsecureSkipTLS: opts.Insecure,
 		URL:             srcURL.String(),
 	}
@@ -94,25 +104,39 @@ func ExternalSource(ctx context.Context, opts ExternalSourceOptions) (fs.FS, err
 
 	var r *git.Repository
 	for i := range cloneOptsSlice {
-		r, err = git.PlainCloneContext(ctx, osx.TempDir("courier-"), false, &cloneOptsSlice[i])
+		r, err = git.PlainCloneContext(
+			ctx,
+			osx.TempDir("courier-"),
+			false,
+			&cloneOptsSlice[i],
+		)
 		if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 			break
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to clone git external source: %w", err)
+		return nil, fmt.Errorf(
+			"failed to clone git external source: %w",
+			err,
+		)
 	}
 
 	wt, err := r.Worktree()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get worktree from the git external source: %w", err)
+		return nil, fmt.Errorf(
+			"failed to get worktree from the git external source: %w",
+			err,
+		)
 	}
 
 	wtDir := wt.Filesystem
 	if subpath != "" {
 		wtDir, err = wtDir.Chroot(subpath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to chroot subpath of git external source: %w", err)
+			return nil, fmt.Errorf(
+				"failed to chroot subpath of git external source: %w",
+				err,
+			)
 		}
 	}
 

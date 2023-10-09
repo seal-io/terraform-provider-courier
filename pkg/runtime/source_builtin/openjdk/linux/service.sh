@@ -11,7 +11,7 @@ for file in "${ROOT_DIR}/lib/linux/"*; do
   fi
 done
 
-COURIER_PATH="/opt/courier/artifact"
+COURIER_PATH="/var/local/courier/artifact"
 
 SYSTEMD_PATH="/etc/systemd/system"
 
@@ -83,7 +83,8 @@ setup() {
   ##
   ## Prepare
   ##
-  ${rc} "chmod a+w ${COURIER_PATH}/${art}"
+  ${rc} "chown -R $(id -u):$(id -g) ${COURIER_PATH}/${art}"
+
   mkdir "${COURIER_PATH}/${art}/bin"
   cat <<EOF >"${COURIER_PATH}/${art}/bin/startup.sh"
 #!/bin/sh
@@ -99,7 +100,7 @@ EOF
 
 jps -lv | grep ${COURIER_PATH}/${art}/target.jar | awk '{print \$1}' | xargs kill -15
 EOF
-  ${rc} "chmod a+x ${COURIER_PATH}/${art}/bin/*.sh"
+  chmod a+x "${COURIER_PATH}/${art}/bin/"*.sh
 
   ##
   ## Create

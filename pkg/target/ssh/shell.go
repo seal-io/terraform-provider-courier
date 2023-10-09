@@ -24,7 +24,10 @@ type Terminal struct {
 	echo     string
 }
 
-func (h *Host) Shell(ctx context.Context, cmdArgs ...string) (types.Terminal, error) {
+func (h *Host) Shell(
+	ctx context.Context,
+	cmdArgs ...string,
+) (types.Terminal, error) {
 	echo := fmt.Sprintf(`#%s#`, strx.Hex(8))
 
 	s, err := h.getSessionWithContext(ctx)
@@ -89,7 +92,10 @@ func (t *Terminal) Execute(cmd string, args ...string) error {
 	return t.doExecute(io.Discard, cmd, args)
 }
 
-func (t *Terminal) ExecuteWithOutput(cmd string, args ...string) ([]byte, error) {
+func (t *Terminal) ExecuteWithOutput(
+	cmd string,
+	args ...string,
+) ([]byte, error) {
 	buf := bytespool.GetBuffer()
 	defer func() { bytespool.Put(buf) }()
 
@@ -97,7 +103,11 @@ func (t *Terminal) ExecuteWithOutput(cmd string, args ...string) ([]byte, error)
 	return buf.Bytes(), err
 }
 
-func (t *Terminal) doExecute(wr io.Writer, cmd string, args []string) error {
+func (t *Terminal) doExecute(
+	wr io.Writer,
+	cmd string,
+	args []string,
+) error {
 	if cmd == "" {
 		return errors.New("blank command")
 	}

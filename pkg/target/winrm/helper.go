@@ -33,7 +33,9 @@ func (ft *fileTransport) Create(path string) (*writableFile, error) {
 	}
 
 	path = toWindowsPath(path)
-	command := winrm.Powershell(fmt.Sprintf("New-Item -Force -ItemType File -Path %s", path))
+	command := winrm.Powershell(
+		fmt.Sprintf("New-Item -Force -ItemType File -Path %s", path),
+	)
 
 	err := execute(ft.ctx, ft.shell, io.Discard, command)
 	if err != nil {
@@ -68,7 +70,9 @@ func (ft *fileTransport) Open(path string) (fs.File, error) {
 	}
 
 	path = toWindowsPath(path)
-	command := winrm.Powershell(fmt.Sprintf("Get-Item -Force -Path %s", path))
+	command := winrm.Powershell(
+		fmt.Sprintf("Get-Item -Force -Path %s", path),
+	)
 
 	err := execute(ft.ctx, ft.shell, io.Discard, command)
 	if err != nil {
@@ -97,7 +101,9 @@ func (ft *fileTransport) MkdirAll(path string) error {
 	}
 
 	path = toWindowsPath(path)
-	command := winrm.Powershell(fmt.Sprintf("New-Item -Force -ItemType Directory -Path %s", path))
+	command := winrm.Powershell(
+		fmt.Sprintf("New-Item -Force -ItemType Directory -Path %s", path),
+	)
 
 	err := execute(ft.ctx, ft.shell, io.Discard, command)
 	if err != nil {
@@ -254,7 +260,9 @@ func (f *readonlyFile) Stat() (fs.FileInfo, error) {
 	}
 
 	if len(r.Objects) != 1 || len(r.Objects[0].Properties) == 0 {
-		return nil, errors.New("failed to unmarshal file info: no object or no properties")
+		return nil, errors.New(
+			"failed to unmarshal file info: no object or no properties",
+		)
 	}
 
 	var fi fileInfo
@@ -288,7 +296,12 @@ func toWindowsPath(path string) string {
 	return strings.ReplaceAll(path, "/", "\\")
 }
 
-func execute(ctx context.Context, shell *winrm.Shell, out io.Writer, command string) error {
+func execute(
+	ctx context.Context,
+	shell *winrm.Shell,
+	out io.Writer,
+	command string,
+) error {
 	c, err := shell.ExecuteWithContext(ctx, command)
 	if err != nil {
 		return err

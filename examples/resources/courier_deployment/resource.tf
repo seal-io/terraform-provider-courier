@@ -27,14 +27,6 @@ variable "deployment_progress_timeout" {
 }
 
 resource "courier_deployment" "example" {
-  artifact = {
-    id    = "..."
-    refer = {
-      uri = "..."
-    }
-    runtime = "..."
-  }
-
   targets = [
     {
       id   = "..."
@@ -48,6 +40,19 @@ resource "courier_deployment" "example" {
       }
     }
   ]
+
+  runtime = {
+    id    = "..."
+    class = "..."
+  }
+
+  artifact = {
+    id    = "..."
+    refer = {
+      uri = "..."
+    }
+    runtime = "..."
+  }
 
   strategy = {
     type    = var.deployment_strategy

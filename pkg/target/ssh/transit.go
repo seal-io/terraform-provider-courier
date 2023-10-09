@@ -12,7 +12,11 @@ import (
 	"github.com/seal-io/terraform-provider-courier/utils/bytespool"
 )
 
-func (h *Host) UploadFile(ctx context.Context, from types.FileReader, to string) (err error) {
+func (h *Host) UploadFile(
+	ctx context.Context,
+	from types.FileReader,
+	to string,
+) (err error) {
 	if from == nil {
 		return errors.New("nil local file reader")
 	}
@@ -46,7 +50,11 @@ func (h *Host) UploadFile(ctx context.Context, from types.FileReader, to string)
 	return err
 }
 
-func (h *Host) UploadDirectory(ctx context.Context, from types.DirectoryReader, to string) error {
+func (h *Host) UploadDirectory(
+	ctx context.Context,
+	from types.DirectoryReader,
+	to string,
+) error {
 	if from == nil {
 		return errors.New("nil local directory reader")
 	}
@@ -67,39 +75,43 @@ func (h *Host) UploadDirectory(ctx context.Context, from types.DirectoryReader, 
 		return err
 	}
 
-	return fs.WalkDir(from, ".", func(p string, d fs.DirEntry, ierr error) (err error) {
-		if ierr != nil {
-			return ierr
-		}
-
-		if d.IsDir() {
-			return c.MkdirAll(to + "/" + p)
-		}
-
-		rd, err := from.Open(p)
-		if err != nil {
-			return err
-		}
-
-		defer func() { _ = rd.Close() }()
-
-		wr, err := c.Create(to + "/" + p)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			if cerr := wr.Close(); err == nil {
-				err = cerr
+	return fs.WalkDir(
+		from,
+		".",
+		func(p string, d fs.DirEntry, ierr error) (err error) {
+			if ierr != nil {
+				return ierr
 			}
-		}()
 
-		buf := bytespool.GetBytes()
-		defer func() { bytespool.Put(buf) }()
+			if d.IsDir() {
+				return c.MkdirAll(to + "/" + p)
+			}
 
-		_, err = io.CopyBuffer(wr, rd, buf)
-		return err
-	})
+			rd, err := from.Open(p)
+			if err != nil {
+				return err
+			}
+
+			defer func() { _ = rd.Close() }()
+
+			wr, err := c.Create(to + "/" + p)
+			if err != nil {
+				return err
+			}
+
+			defer func() {
+				if cerr := wr.Close(); err == nil {
+					err = cerr
+				}
+			}()
+
+			buf := bytespool.GetBytes()
+			defer func() { bytespool.Put(buf) }()
+
+			_, err = io.CopyBuffer(wr, rd, buf)
+			return err
+		},
+	)
 }
 
 type file struct {
@@ -114,7 +126,10 @@ func (f file) Close() error {
 	return f.File.Close()
 }
 
-func (h *Host) DownloadFile(ctx context.Context, from string) (types.FileReadCloser, error) {
+func (h *Host) DownloadFile(
+	ctx context.Context,
+	from string,
+) (types.FileReadCloser, error) {
 	if from == "" {
 		return nil, errors.New("blank remote file path")
 	}
@@ -172,7 +187,10 @@ func (d directory) ReadDir(name string) ([]fs.DirEntry, error) {
 	return r, nil
 }
 
-func (h *Host) DownloadDirectory(ctx context.Context, from string) (types.DirectoryReadCloser, error) {
+func (h *Host) DownloadDirectory(
+	ctx context.Context,
+	from string,
+) (types.DirectoryReadCloser, error) {
 	if from == "" {
 		return nil, errors.New("blank remote directory path")
 	}
@@ -210,7 +228,9 @@ type fileTransport struct {
 	session *session
 }
 
-func (h *Host) getFileTransportWithContext(ctx context.Context) (*fileTransport, error) {
+func (h *Host) getFileTransportWithContext(
+	ctx context.Context,
+) (*fileTransport, error) {
 	s, err := h.getSessionWithContext(ctx)
 	if err != nil {
 		return nil, err

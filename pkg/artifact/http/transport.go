@@ -17,7 +17,10 @@ type basic struct {
 	password string
 }
 
-func withBasicAuth(in http.RoundTripper, username, password string) *basic {
+func withBasicAuth(
+	in http.RoundTripper,
+	username, password string,
+) *basic {
 	return &basic{
 		RoundTripper: in,
 		username:     username,

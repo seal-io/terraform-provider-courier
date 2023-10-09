@@ -21,17 +21,16 @@ terraform {
 
 provider "courier" {}
 
-resource "courier_artifact" "example" {
+data "courier_artifact" "example" {
   refer = {
     uri = "https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war"
   }
-  
-  runtime = "tomcat"
-  ports   = [80, 443]
+
+  ports = [80, 443]
 }
 
-resource "courier_target" "example" {
-  host  = {
+data "courier_target" "example" {
+  host = {
     address = "..."
     authn   = {
       type   = "ssh"
@@ -42,9 +41,14 @@ resource "courier_target" "example" {
   }
 }
 
+data "courier_runtime" "example" {
+  class = "tomcat"
+}
+
 resource "courier_deployment" "example" {
-  artifact = courier_artifact.example
-  target   = courier_target.example
+  targets  = [data.courier_target.example]
+  runtime  = data.courier_runtime.example
+  artifact = data.courier_artifact.example
 }
 
 ```

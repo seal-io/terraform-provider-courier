@@ -58,7 +58,9 @@ func New(opts types.ReferOptions) (types.Refer, error) {
 }
 
 func (p *Refer) State(ctx context.Context) (types.ReferStatus, error) {
-	d, err := remote.Head(p.ref, append(p.opts, remote.WithContext(ctx))...)
+	d, err := remote.Head(
+		p.ref,
+		append(p.opts, remote.WithContext(ctx))...)
 	if err != nil {
 		return types.ReferStatus{}, fmt.Errorf("failed to head: %w", err)
 	}

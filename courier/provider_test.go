@@ -45,22 +45,7 @@ func TestProvider_metadata(t *testing.T) {
 }
 
 var testAccProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"courier": func() (ps tfprotov6.ProviderServer, err error) {
-		ps, err = providerserver.NewProtocol6WithError(NewProvider())()
-		if err != nil {
-			return
-		}
-
-		ctx := context.TODO()
-
-		_, err = ps.ConfigureProvider(ctx, &tfprotov6.ConfigureProviderRequest{
-			Config: &tfprotov6.DynamicValue{
-				JSON: []byte("{}"),
-			},
-		})
-
-		return
-	},
+	"courier": providerserver.NewProtocol6WithError(NewProvider()),
 }
 
 type multipass struct {
@@ -136,7 +121,10 @@ func (m *multipass) Stop(t *testing.T, ctx context.Context) (err error) {
 	return err
 }
 
-func (m *multipass) GetEndpoints(t *testing.T, ctx context.Context) (priKey string, hosts []string, err error) {
+func (m *multipass) GetEndpoints(
+	t *testing.T,
+	ctx context.Context,
+) (priKey string, hosts []string, err error) {
 	list, err := m.list(t, ctx)
 	if err != nil {
 		return "", nil, err
@@ -146,7 +134,11 @@ func (m *multipass) GetEndpoints(t *testing.T, ctx context.Context) (priKey stri
 		if len(list[i].IPv4) == 0 {
 			continue
 		}
+
 		hosts = append(hosts, list[i].IPv4[0])
+		if len(hosts) == m.hosts {
+			break
+		}
 	}
 
 	return string(m.priKeyBs), hosts, nil
@@ -191,12 +183,16 @@ func (m *multipass) configure(t *testing.T) (err error) {
 
 		pubKey_, ok := pubKey.(ssh.CryptoPublicKey)
 		if !ok {
-			t.Logf("[MP ERROR] failed to convert public key to crypto public key")
+			t.Logf(
+				"[MP ERROR] failed to convert public key to crypto public key",
+			)
 			goto generate
 		}
 
 		if !priKey.PublicKey.Equal(pubKey_.CryptoPublicKey()) {
-			t.Logf("[MP ERROR] public key does not match private key, regenerate ...")
+			t.Logf(
+				"[MP ERROR] public key does not match private key, regenerate ...",
+			)
 			goto generate
 		}
 
@@ -239,12 +235,18 @@ generate:
 			Bytes:   x509.MarshalPKCS1PrivateKey(priKey),
 		})
 		if err = os.WriteFile(priKeyFile, priKeyBs, 0o600); err != nil {
-			return nil, nil, fmt.Errorf("failed to write private key file: %w", err)
+			return nil, nil, fmt.Errorf(
+				"failed to write private key file: %w",
+				err,
+			)
 		}
 
 		pubKeyBs := ssh.MarshalAuthorizedKey(pubKey)
 		if err = os.WriteFile(pubKeyFile, pubKeyBs, 0o644); err != nil {
-			return nil, nil, fmt.Errorf("failed to write public key file: %w", err)
+			return nil, nil, fmt.Errorf(
+				"failed to write public key file: %w",
+				err,
+			)
 		}
 
 		return priKeyBs, pubKeyBs, nil
@@ -262,12 +264,13 @@ ssh_pwauth: true
 users:
   - default
   - name: ansible
-    groups: users,admin,sudo
+    groups: staff,sudo,wheel
     lock_passwd: false
     passwd: $5$rounds=4096$shj749w9ri0MMGtL$WU4oIhMPFW4uk0M9jMVbTaJlQPFEcoADUDsp7QBIM55
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
   - name: root
+    lock_passwd: false
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
     - %s
@@ -281,7 +284,11 @@ users:
 	return nil
 }
 
-func (m *multipass) create(t *testing.T, ctx context.Context, name string) error {
+func (m *multipass) create(
+	t *testing.T,
+	ctx context.Context,
+	name string,
+) error {
 	return m.exec(t, ctx, io.Discard, "launch",
 		"--cpus", "1",
 		"--memory", "512M",
@@ -299,7 +306,11 @@ type multipassInstance struct {
 	State   string   `json:"state"`
 }
 
-func (m *multipass) get(t *testing.T, ctx context.Context, name string) (multipassInstance, error) {
+func (m *multipass) get(
+	t *testing.T,
+	ctx context.Context,
+	name string,
+) (multipassInstance, error) {
 	buf := bytespool.GetBuffer()
 	defer func() { bytespool.Put(buf) }()
 
@@ -348,17 +359,26 @@ func (m *multipass) get(t *testing.T, ctx context.Context, name string) (multipa
 	}
 	err = json.Unmarshal(buf.Bytes(), &res)
 	if err != nil {
-		return multipassInstance{}, fmt.Errorf("failed to unmarshal get result: %w", err)
+		return multipassInstance{}, fmt.Errorf(
+			"failed to unmarshal get result: %w",
+			err,
+		)
 	}
 
 	if len(res.Info) == 0 {
-		return multipassInstance{}, fmt.Errorf("instance '%s' not found", name)
+		return multipassInstance{}, fmt.Errorf(
+			"instance '%s' not found",
+			name,
+		)
 	}
 
 	return res.Info[name], nil
 }
 
-func (m *multipass) list(t *testing.T, ctx context.Context) ([]multipassInstance, error) {
+func (m *multipass) list(
+	t *testing.T,
+	ctx context.Context,
+) ([]multipassInstance, error) {
 	buf := bytespool.GetBuffer()
 	defer func() { bytespool.Put(buf) }()
 
@@ -390,17 +410,30 @@ func (m *multipass) list(t *testing.T, ctx context.Context) ([]multipassInstance
 	return res.List, nil
 }
 
-func (m *multipass) delete(t *testing.T, ctx context.Context, name string) error {
+func (m *multipass) delete(
+	t *testing.T,
+	ctx context.Context,
+	name string,
+) error {
 	return m.exec(t, ctx, io.Discard, "delete",
 		"--purge", name)
 }
 
-func (m *multipass) start(t *testing.T, ctx context.Context, name string) error {
+func (m *multipass) start(
+	t *testing.T,
+	ctx context.Context,
+	name string,
+) error {
 	return m.exec(t, ctx, io.Discard, "start",
 		name)
 }
 
-func (m *multipass) exec(t *testing.T, ctx context.Context, wr io.Writer, args ...string) error {
+func (m *multipass) exec(
+	t *testing.T,
+	ctx context.Context,
+	wr io.Writer,
+	args ...string,
+) error {
 	c := exec.CommandContext(ctx, m.binPath, args...)
 
 	c.Stdout = io.MultiWriter(wr, stdoutWriter(t.Log))
@@ -408,7 +441,11 @@ func (m *multipass) exec(t *testing.T, ctx context.Context, wr io.Writer, args .
 
 	err := c.Run()
 	if err != nil {
-		return fmt.Errorf("failed to exec 'multipass %s': %w", strx.Join(" ", args...), err)
+		return fmt.Errorf(
+			"failed to exec 'multipass %s': %w",
+			strx.Join(" ", args...),
+			err,
+		)
 	}
 
 	return nil

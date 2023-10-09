@@ -8,13 +8,13 @@ import (
 
 type Classes map[string]map[string]struct{}
 
-func (r Classes) HasRuntime(rt string) bool {
+func (r Classes) Has(rt string) bool {
 	_, ok := r[rt]
 	return ok
 }
 
-func (r Classes) Has(rt, os string) bool {
-	if !r.HasRuntime(rt) {
+func (r Classes) HasOS(rt, os string) bool {
+	if !r.Has(rt) {
 		return false
 	}
 
@@ -22,7 +22,7 @@ func (r Classes) Has(rt, os string) bool {
 	return ok
 }
 
-func GetClasses(dir fs.FS) (Classes, error) {
+func GetClasses(dir Source) (Classes, error) {
 	di, err := fs.ReadDir(dir, ".")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtimes list: %w",
@@ -34,8 +34,11 @@ func GetClasses(dir fs.FS) (Classes, error) {
 	for i := range di {
 		dj, err := fs.ReadDir(dir, di[i].Name())
 		if err != nil {
-			return nil, fmt.Errorf("failed to get os list of runtime %s: %w",
-				di[i].Name(), err)
+			return nil, fmt.Errorf(
+				"failed to get os list of runtime %s: %w",
+				di[i].Name(),
+				err,
+			)
 		}
 
 		if len(dj) == 0 {

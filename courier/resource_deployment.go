@@ -29,41 +29,48 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/seal-io/terraform-provider-courier/pkg/runtime"
 	"github.com/seal-io/terraform-provider-courier/pkg/target"
 	"github.com/seal-io/terraform-provider-courier/utils/osx"
 	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
-var _ resource.ResourceWithConfigure = (*ResourceDeployment)(nil)
+var _ resource.Resource = (*ResourceDeployment)(nil)
 
 type (
 	ResourceDeployment struct {
-		_ProviderConfig ProviderConfig
-
-		Artifact ResourceDeploymentArtifact  `tfsdk:"artifact"`
 		Targets  []ResourceDeploymentTarget  `tfsdk:"targets"`
+		Artifact ResourceDeploymentArtifact  `tfsdk:"artifact"`
+		Runtime  ResourceDeploymentRuntime   `tfsdk:"runtime"`
 		Strategy *ResourceDeploymentStrategy `tfsdk:"strategy"`
 		Timeouts timeouts.Value              `tfsdk:"timeouts"`
 
 		ID types.String `tfsdk:"id"`
 	}
 
-	ResourceDeploymentArtifact struct {
-		ID      types.String          `tfsdk:"id"`
-		Refer   ResourceArtifactRefer `tfsdk:"refer"`
-		Runtime types.String          `tfsdk:"runtime"`
-		Command types.String          `tfsdk:"command"`
-		Ports   []types.Int64         `tfsdk:"ports"`
-		Envs    types.Map             `tfsdk:"envs"`
-		Volumes []types.String        `tfsdk:"volumes"`
-		Digest  types.String          `tfsdk:"digest"`
+	ResourceDeploymentTarget struct {
+		ID   types.String         `tfsdk:"id"`
+		Host DataSourceTargetHost `tfsdk:"host"`
+		OS   types.String         `tfsdk:"os"`
+		Arch types.String         `tfsdk:"arch"`
 	}
 
-	ResourceDeploymentTarget struct {
-		ID   types.String       `tfsdk:"id"`
-		Host ResourceTargetHost `tfsdk:"host"`
-		OS   types.String       `tfsdk:"os"`
-		Arch types.String       `tfsdk:"arch"`
+	ResourceDeploymentArtifact struct {
+		ID      types.String            `tfsdk:"id"`
+		Refer   DataSourceArtifactRefer `tfsdk:"refer"`
+		Command types.String            `tfsdk:"command"`
+		Ports   []types.Int64           `tfsdk:"ports"`
+		Envs    map[string]types.String `tfsdk:"envs"`
+		Volumes []types.String          `tfsdk:"volumes"`
+		Digest  types.String            `tfsdk:"digest"`
+	}
+
+	ResourceDeploymentRuntime struct {
+		ID       types.String            `tfsdk:"id"`
+		Class    types.String            `tfsdk:"class"`
+		Source   types.String            `tfsdk:"source"`
+		Authn    *DataSourceRuntimeAuthn `tfsdk:"authn"`
+		Insecure types.Bool              `tfsdk:"insecure"`
 	}
 
 	ResourceDeploymentStrategy struct {
@@ -81,10 +88,6 @@ func NewResourceDeployment() resource.Resource {
 }
 
 func (r *ResourceDeployment) Equal(l ResourceDeployment) bool {
-	if !r.Artifact.Equal(l.Artifact) {
-		return false
-	}
-
 	if len(r.Targets) != len(l.Targets) {
 		return false
 	} else {
@@ -99,10 +102,18 @@ func (r *ResourceDeployment) Equal(l ResourceDeployment) bool {
 		})
 
 		for i := range ltg {
-			if !rtg[i].Equal(ltg[i]) {
+			if !rtg[i].ID.Equal(ltg[i].ID) {
 				return false
 			}
 		}
+	}
+
+	if !r.Artifact.ID.Equal(l.Artifact.ID) {
+		return false
+	}
+
+	if !r.Runtime.ID.Equal(l.Runtime.ID) {
+		return false
 	}
 
 	if r.Strategy != nil && l.Strategy != nil {
@@ -115,16 +126,19 @@ func (r *ResourceDeployment) Equal(l ResourceDeployment) bool {
 }
 
 func (r *ResourceDeployment) Hash() string {
-	return strx.Sum(r.Artifact.Hash())
+	return strx.Sum(r.Artifact.ID.ValueString())
 }
 
-func (r *ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeploymentArtifact) diag.Diagnostics {
-	hosts, diags := reflectHosts(ctx, r.Targets)
+func (r *ResourceDeployment) Apply(
+	ctx context.Context,
+	prevArt *ResourceDeploymentArtifact,
+) diag.Diagnostics {
+	deploy, diags := r.Reflect(ctx)
 	if diags.HasError() {
 		return diags
 	}
 
-	diags.Append(setup(ctx, r._ProviderConfig, r.Artifact, hosts)...)
+	diags.Append(deploy.Setup(ctx)...)
 	if diags.HasError() {
 		return diags
 	}
@@ -140,26 +154,29 @@ func (r *ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeploym
 			}
 		}
 
-		step := int(math.Round(maxSurge * float64(len(hosts))))
+		step := int(math.Round(maxSurge * float64(len(deploy.Targets))))
 		if step == 0 {
 			step = 1
 		}
 
-		if step != len(hosts) {
-			for i, m := 0, len(hosts); i < m; {
+		if step != len(deploy.Targets) {
+			for i, m := 0, len(deploy.Targets); i < m; {
 				j := i + step
 				if j > m {
 					j = m
 				}
 
-				if prevArt != nil && !prevArt.Equal(r.Artifact) {
-					diags.Append(stop(ctx, r.Artifact, hosts[i:j])...)
+				partialDeploy := deploy
+				partialDeploy.Targets = deploy.Targets[i:j]
+
+				if prevArt != nil && !prevArt.ID.Equal(r.Artifact.ID) {
+					diags.Append(partialDeploy.Stop(ctx)...)
 					if diags.HasError() {
 						return diags
 					}
 				}
 
-				diags.Append(start(ctx, r.Artifact, hosts[i:j])...)
+				diags.Append(partialDeploy.Start(ctx)...)
 				if diags.HasError() {
 					return diags
 				}
@@ -172,63 +189,142 @@ func (r *ResourceDeployment) Apply(ctx context.Context, prevArt *ResourceDeploym
 	}
 
 	// Recreate.
-	if prevArt != nil && !prevArt.Equal(r.Artifact) {
-		diags.Append(stop(ctx, r.Artifact, hosts)...)
+	if prevArt != nil && !prevArt.ID.Equal(r.Artifact.ID) {
+		diags.Append(deploy.Stop(ctx)...)
 		if diags.HasError() {
 			return diags
 		}
 	}
 
-	diags.Append(start(ctx, r.Artifact, hosts)...)
+	diags.Append(deploy.Start(ctx)...)
 
 	return diags
 }
 
-func (r *ResourceDeployment) Release(ctx context.Context) diag.Diagnostics {
-	hosts, diags := reflectHosts(ctx, r.Targets)
+func (r *ResourceDeployment) Release(
+	ctx context.Context,
+) diag.Diagnostics {
+	deploy, diags := r.Reflect(ctx)
 	if diags.HasError() {
 		return diags
 	}
 
-	diags.Append(cleanup(ctx, r.Artifact, hosts)...)
+	diags.Append(deploy.Cleanup(ctx)...)
 
 	return diags
 }
 
-func (r ResourceDeploymentArtifact) Equal(l ResourceDeploymentArtifact) bool {
-	return r.Refer.Equal(l.Refer) && r.Runtime.Equal(l.Runtime)
-}
+type (
+	DeploymentTarget struct {
+		target.Host
 
-func (r ResourceDeploymentArtifact) Hash() string {
-	return strx.Sum(r.Refer.Hash(), r.Runtime.ValueString())
-}
+		RuntimeClass string
+		OS           string
+		Arch         string
+	}
 
-func (r ResourceDeploymentTarget) Equal(l ResourceDeploymentTarget) bool {
-	return r.Host.Equal(l.Host)
-}
+	Deployment struct {
+		Targets  []DeploymentTarget
+		Runtime  runtime.Source
+		Artifact ResourceDeploymentArtifact
+	}
+)
 
-func (r ResourceDeploymentTarget) Hash() string {
-	return r.Host.Hash()
-}
-
-func setup(
+func (r *ResourceDeployment) Reflect(
 	ctx context.Context,
-	cfg ProviderConfig,
-	artifact ResourceDeploymentArtifact,
-	hosts []targetHost,
-) (diags diag.Diagnostics) {
+) (*Deployment, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	rt, err := r.Runtime.Reflect(ctx)
+	if err != nil {
+		diags.Append(diag.NewAttributeErrorDiagnostic(
+			path.Root("runtime"),
+			"Invalid Runtime",
+			fmt.Sprintf("Cannot reflect: %v", err),
+		))
+
+		return nil, diags
+	}
+
+	deploy := &Deployment{
+		Targets:  make([]DeploymentTarget, 0, len(r.Targets)),
+		Runtime:  rt,
+		Artifact: r.Artifact,
+	}
+
+	for i := range r.Targets {
+		host, err := r.Targets[i].Host.Reflect(ctx)
+		if err != nil {
+			diags.Append(diag.NewAttributeErrorDiagnostic(
+				path.Root("targets").AtListIndex(i).AtName("host"),
+				"Invalid Target Host",
+				fmt.Sprintf("Cannot reflect from host: %v", err),
+			))
+
+			continue
+		}
+
+		deploy.Targets = append(deploy.Targets, DeploymentTarget{
+			Host:         host,
+			RuntimeClass: r.Runtime.Class.ValueString(),
+			OS:           r.Targets[i].OS.ValueString(),
+			Arch:         r.Targets[i].Arch.ValueString(),
+		})
+	}
+
+	return deploy, diags
+}
+
+func (t DeploymentTarget) Command() string {
+	suffix := "sh"
+	if t.OS == "windows" {
+		suffix = "ps1"
+	}
+
+	return fmt.Sprintf("/var/local/courier/runtime/%s/%s/service.%s",
+		t.RuntimeClass,
+		t.OS,
+		suffix)
+}
+
+func (d Deployment) Setup(ctx context.Context) diag.Diagnostics {
+	var (
+		diags diag.Diagnostics
+		tgts  = d.Targets
+		art   = d.Artifact
+	)
+
 	// Upload runtime.
 	{
 		g, ctx := errgroup.WithContext(ctx)
 
-		for i := range hosts {
-			h := hosts[i]
+		for i := range tgts {
+			t := tgts[i]
+
 			g.Go(func() error {
 				// TODO, avoid upload runtime if already exists.
-				return h.UploadDirectory(
+				err := t.UploadDirectory(
 					ctx,
-					cfg.RuntimeSource,
-					"/opt/courier/runtime")
+					d.Runtime,
+					"/var/local/courier/runtime")
+				if err != nil {
+					return err
+				}
+
+				if t.OS == "linux" {
+					output, err := t.ExecuteWithOutput(
+						ctx,
+						"chmod",
+						"a+x",
+						fmt.Sprintf("/var/local/courier/runtime/%s/linux/service.sh", t.RuntimeClass),
+					)
+					if err != nil {
+						tflog.Error(ctx, "cannot change service permission: "+string(output))
+						return err
+					}
+				}
+
+				return nil
 			})
 		}
 
@@ -242,13 +338,16 @@ func setup(
 		}
 	}
 
-	// Prepare artifact.
+	// Upload artifact.
 	{
 		tmpDir := osx.TempDir("courier-")
 		defer func() { _ = os.RemoveAll(tmpDir) }()
 
-		err := os.WriteFile(fmt.Sprintf("%s/command", tmpDir), //nolint:gosec
-			[]byte(artifact.Command.ValueString()), 0o666)
+		err := os.WriteFile( //nolint:gosec
+			fmt.Sprintf("%s/command", tmpDir),
+			[]byte(art.Command.ValueString()),
+			0o666,
+		)
 		if err != nil {
 			diags.Append(diag.NewErrorDiagnostic(
 				"Cannot prepare command",
@@ -259,21 +358,24 @@ func setup(
 		}
 
 		var (
-			ports    = make([]int, 0, len(artifact.Ports))
+			ports    = make([]int, 0, len(art.Ports))
 			portsBuf bytes.Buffer
 		)
-		for i := range artifact.Ports {
-			if artifact.Ports[i].IsNull() || artifact.Ports[i].IsUnknown() {
+		for i := range art.Ports {
+			if art.Ports[i].IsNull() ||
+				art.Ports[i].IsUnknown() {
 				continue
 			}
-			ports = append(ports, int(artifact.Ports[i].ValueInt64()))
+			ports = append(ports, int(art.Ports[i].ValueInt64()))
 		}
 		sort.Ints(ports)
 		for i := range ports {
 			_, _ = fmt.Fprintf(&portsBuf, "%d\n", ports[i])
 		}
-		err = os.WriteFile(fmt.Sprintf("%s/ports", tmpDir), //nolint:gosec
-			portsBuf.Bytes(), 0o666)
+		err = os.WriteFile( //nolint:gosec
+			fmt.Sprintf("%s/ports", tmpDir),
+			portsBuf.Bytes(),
+			0o666)
 		if err != nil {
 			diags.Append(diag.NewErrorDiagnostic(
 				"Cannot prepare ports",
@@ -284,10 +386,10 @@ func setup(
 		}
 
 		var (
-			envs    = make([]string, 0, len(artifact.Envs.Elements()))
+			envs    = make([]string, 0, len(art.Envs))
 			envsBuf bytes.Buffer
 		)
-		for k, v := range artifact.Envs.Elements() {
+		for k, v := range art.Envs {
 			if v.IsNull() || v.IsUnknown() {
 				envs = append(envs, fmt.Sprintf("%s=", k))
 			} else {
@@ -298,8 +400,10 @@ func setup(
 		for i := range envs {
 			_, _ = fmt.Fprintf(&envsBuf, "%s\n", envs[i])
 		}
-		err = os.WriteFile(fmt.Sprintf("%s/envs", tmpDir), //nolint:gosec
-			envsBuf.Bytes(), 0o666)
+		err = os.WriteFile( //nolint:gosec
+			fmt.Sprintf("%s/envs", tmpDir),
+			envsBuf.Bytes(),
+			0o666)
 		if err != nil {
 			diags.Append(diag.NewErrorDiagnostic(
 				"Cannot prepare envs",
@@ -310,21 +414,25 @@ func setup(
 		}
 
 		var (
-			volumes    = make([]string, 0, len(artifact.Volumes))
+			volumes    = make([]string, 0, len(art.Volumes))
 			volumesBuf bytes.Buffer
 		)
-		for i := range artifact.Volumes {
-			if artifact.Volumes[i].IsNull() || artifact.Volumes[i].IsUnknown() {
+		for i := range art.Volumes {
+			if art.Volumes[i].IsNull() ||
+				art.Volumes[i].IsUnknown() {
 				continue
 			}
-			volumes = append(volumes, artifact.Volumes[i].ValueString())
+			volumes = append(volumes, art.Volumes[i].ValueString())
 		}
 		sort.Strings(volumes)
 		for i := range volumes {
 			_, _ = fmt.Fprintf(&volumesBuf, "%s\n", envs[i])
 		}
-		err = os.WriteFile(fmt.Sprintf("%s/volumes", tmpDir), //nolint:gosec
-			volumesBuf.Bytes(), 0o666)
+		err = os.WriteFile( //nolint:gosec
+			fmt.Sprintf("%s/volumes", tmpDir),
+			volumesBuf.Bytes(),
+			0o666,
+		)
 		if err != nil {
 			diags.Append(diag.NewErrorDiagnostic(
 				"Cannot prepare volumes",
@@ -336,15 +444,14 @@ func setup(
 
 		g, ctx := errgroup.WithContext(ctx)
 
-		for i := range hosts {
-			h := hosts[i]
+		for i := range tgts {
+			t := tgts[i]
 
 			g.Go(func() (err error) {
-				return h.UploadDirectory(
+				return t.UploadDirectory(
 					ctx,
 					os.DirFS(tmpDir),
-					fmt.Sprintf("/opt/courier/artifact/%s",
-						artifact.ID.ValueString()))
+					fmt.Sprintf("/var/local/courier/artifact/%s", art.ID.ValueString()))
 			})
 		}
 
@@ -358,19 +465,15 @@ func setup(
 		}
 	}
 
-	// Upload artifact and setup.
 	{
 		args := []string{
 			"setup",
-			artifact.ID.ValueString(),
+			art.ID.ValueString(),
+			art.Refer.URI.ValueString(),
+			art.Digest.ValueString(),
 		}
 
-		args = append(
-			args,
-			artifact.Refer.URI.ValueString(),
-			artifact.Digest.ValueString())
-
-		if au := artifact.Refer.Authn; au != nil {
+		if au := art.Refer.Authn; au != nil {
 			args = append(
 				args,
 				au.Type.ValueString(),
@@ -379,73 +482,47 @@ func setup(
 			)
 		}
 
-		g, ctx := errgroup.WithContext(ctx)
-
-		for i := range hosts {
-			h := hosts[i]
-
-			g.Go(func() error {
-				if h.OS == "linux" {
-					output, err := h.ExecuteWithOutput(
-						ctx,
-						"chmod",
-						"a+x",
-						fmt.Sprintf("/opt/courier/runtime/%s/linux/service.sh",
-							artifact.Runtime.ValueString()))
-					if err != nil {
-						tflog.Error(ctx, "cannot change service permission: "+string(output))
-						return err
-					}
-				}
-
-				output, err := h.ExecuteWithOutput(
-					ctx,
-					fmt.Sprintf("/opt/courier/runtime/%s/%s/service.%s",
-						artifact.Runtime.ValueString(),
-						h.OS,
-						getSuffix(h.OS)),
-					args...)
-				if err != nil {
-					tflog.Error(ctx, "cannot execute service setup: "+string(output))
-				}
-
-				return err
-			})
-		}
-
-		if err := g.Wait(); err != nil {
-			diags.Append(diag.NewErrorDiagnostic(
-				"Cannot setup",
-				fmt.Sprintf("Cannot setup: %v", err),
-			))
-		}
+		diags.Append(d.execute(ctx, args...)...)
 	}
 
 	return diags
 }
 
-func start(
-	ctx context.Context,
-	artifact ResourceDeploymentArtifact,
-	hosts []targetHost,
-) (diags diag.Diagnostics) {
+func (d Deployment) Start(ctx context.Context) diag.Diagnostics {
+	return d.execute(ctx, "start", d.Artifact.ID.ValueString())
+}
+
+func (d Deployment) Stop(ctx context.Context) diag.Diagnostics {
+	return d.execute(ctx, "stop", d.Artifact.ID.ValueString())
+}
+
+func (d Deployment) Cleanup(ctx context.Context) diag.Diagnostics {
+	return d.execute(ctx, "cleanup", d.Artifact.ID.ValueString())
+}
+
+func (d Deployment) execute(ctx context.Context, args ...string) diag.Diagnostics {
+	if len(args) == 0 {
+		return diag.Diagnostics{
+			diag.NewErrorDiagnostic(
+				"Cannot execute",
+				"Cannot execute without arguments",
+			),
+		}
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 
-	for i := range hosts {
-		h := hosts[i]
+	for i := range d.Targets {
+		t := d.Targets[i]
 
 		g.Go(func() error {
-			output, err := h.ExecuteWithOutput(
+			output, err := t.ExecuteWithOutput(
 				ctx,
-				fmt.Sprintf("/opt/courier/runtime/%s/%s/service.%s",
-					artifact.Runtime.ValueString(),
-					h.OS,
-					getSuffix(h.OS)),
-				"start",
-				artifact.ID.ValueString(),
+				t.Command(),
+				args...,
 			)
 			if err != nil {
-				tflog.Error(ctx, "cannot execute service start: "+string(output))
+				tflog.Error(ctx, "cannot execute "+args[0]+": "+string(output))
 			}
 
 			return err
@@ -453,134 +530,42 @@ func start(
 	}
 
 	if err := g.Wait(); err != nil {
-		diags.Append(diag.NewErrorDiagnostic(
-			"Cannot start",
-			fmt.Sprintf("Cannot start: %v", err),
-		))
-	}
-
-	return diags
-}
-
-func stop(
-	ctx context.Context,
-	artifact ResourceDeploymentArtifact,
-	hosts []targetHost,
-) (diags diag.Diagnostics) {
-	g, ctx := errgroup.WithContext(ctx)
-
-	for i := range hosts {
-		h := hosts[i]
-
-		g.Go(func() error {
-			output, err := h.ExecuteWithOutput(
-				ctx,
-				fmt.Sprintf("/opt/courier/runtime/%s/%s/service.%s",
-					artifact.Runtime.ValueString(),
-					h.OS,
-					getSuffix(h.OS)),
-				"stop",
-				artifact.ID.ValueString(),
-			)
-			if err != nil {
-				tflog.Error(ctx, "cannot execute service stop: "+string(output))
-			}
-
-			return err
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		diags.Append(diag.NewErrorDiagnostic(
-			"Cannot stop",
-			fmt.Sprintf("Cannot stop: %v", err),
-		))
-	}
-
-	return diags
-}
-
-func cleanup(
-	ctx context.Context,
-	artifact ResourceDeploymentArtifact,
-	hosts []targetHost,
-) (diags diag.Diagnostics) {
-	g, ctx := errgroup.WithContext(ctx)
-
-	for i := range hosts {
-		h := hosts[i]
-
-		g.Go(func() error {
-			output, err := h.ExecuteWithOutput(
-				ctx,
-				fmt.Sprintf("/opt/courier/runtime/%s/%s/service.%s",
-					artifact.Runtime.ValueString(),
-					h.OS,
-					getSuffix(h.OS)),
-				"cleanup",
-				artifact.ID.ValueString(),
-			)
-			if err != nil {
-				tflog.Error(ctx, "cannot execute service cleanup: "+string(output))
-			}
-
-			return err
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		diags.Append(diag.NewErrorDiagnostic(
-			"Cannot cleanup",
-			fmt.Sprintf("Cannot cleanup: %v", err),
-		))
-	}
-
-	return diags
-}
-
-func getSuffix(os string) string {
-	if os == "windows" {
-		return "ps1"
-	}
-	return "sh"
-}
-
-type targetHost struct {
-	target.Host
-
-	OS   string
-	Arch string
-}
-
-func reflectHosts(
-	ctx context.Context,
-	targets []ResourceDeploymentTarget,
-) (hosts []targetHost, diags diag.Diagnostics) {
-	hosts = make([]targetHost, 0, len(targets))
-
-	for i := range targets {
-		host, err := targets[i].Host.Reflect(ctx)
-		if err != nil {
-			diags.Append(diag.NewAttributeErrorDiagnostic(
-				path.Root("targets").AtListIndex(i).AtName("host"),
-				"Invalid Host",
-				fmt.Sprintf("Cannot reflect from host: %v", err),
-			))
-
-			continue
+		return diag.Diagnostics{
+			diag.NewErrorDiagnostic(
+				"Cannot execute "+args[0],
+				fmt.Sprintf("Cannot execute %s: %v", args[0], err),
+			),
 		}
-
-		hosts = append(hosts, targetHost{
-			Host: host,
-			OS:   targets[i].OS.ValueString(),
-			Arch: targets[i].Arch.ValueString(),
-		})
 	}
 
-	return hosts, diags
+	return nil
 }
 
-func (r ResourceDeploymentStrategy) Equal(l ResourceDeploymentStrategy) bool {
+func (r ResourceDeploymentRuntime) Reflect(
+	ctx context.Context,
+) (runtime.Source, error) {
+	if r.Source.ValueString() == "" {
+		return runtime.BuiltinSource(), nil
+	}
+
+	opts := runtime.ExternalSourceOptions{
+		Source:   r.Source.ValueString(),
+		Insecure: r.Insecure.ValueBool(),
+	}
+	if au := r.Authn; au != nil {
+		opts.Authn = runtime.ExternalSourceOptionAuthn{
+			Type:   au.Type.ValueString(),
+			User:   au.User.ValueString(),
+			Secret: au.Secret.ValueString(),
+		}
+	}
+
+	return runtime.ExternalSource(ctx, opts)
+}
+
+func (r ResourceDeploymentStrategy) Equal(
+	l ResourceDeploymentStrategy,
+) bool {
 	if !r.Type.Equal(l.Type) {
 		return false
 	}
@@ -594,7 +579,9 @@ func (r ResourceDeploymentStrategy) Equal(l ResourceDeploymentStrategy) bool {
 	return true
 }
 
-func (r ResourceDeploymentStrategyRolling) Equal(l ResourceDeploymentStrategyRolling) bool {
+func (r ResourceDeploymentStrategyRolling) Equal(
+	l ResourceDeploymentStrategyRolling,
+) bool {
 	return r.MaxSurge.Equal(l.MaxSurge)
 }
 
@@ -603,105 +590,20 @@ func (r *ResourceDeployment) Metadata(
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "deployment"}, "_")
+	resp.TypeName = strings.Join(
+		[]string{req.ProviderTypeName, "deployment"},
+		"_",
+	)
 }
 
-func (r *ResourceDeployment) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceDeployment) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: `Specify how to deploy.`,
 		Attributes: map[string]schema.Attribute{
-			"artifact": schema.SingleNestedAttribute{
-				Required:    true,
-				Description: `The artifact of the deployment.`,
-				Attributes: map[string]schema.Attribute{
-					"id": schema.StringAttribute{
-						Required:    true,
-						Description: `The ID of the artifact.`,
-					},
-					"refer": schema.SingleNestedAttribute{
-						Required:    true,
-						Description: `The reference of the artifact.`,
-						Attributes: map[string]schema.Attribute{
-							"uri": schema.StringAttribute{
-								Required:    true,
-								Description: `The reference to pull the artifact.`,
-								Validators: []validator.String{
-									stringvalidator.LengthAtLeast(1),
-								},
-							},
-							"authn": schema.SingleNestedAttribute{
-								Optional:    true,
-								Description: `The authentication for pulling the artifact.`,
-								Attributes: map[string]schema.Attribute{
-									"type": schema.StringAttribute{
-										Optional:    true,
-										Computed:    true,
-										Default:     stringdefault.StaticString("basic"),
-										Description: `The type for authentication, either "basic" or "bearer".`,
-										Validators: []validator.String{
-											stringvalidator.OneOf("basic", "bearer"),
-										},
-									},
-									"user": schema.StringAttribute{
-										Optional:    true,
-										Computed:    true,
-										Default:     stringdefault.StaticString(""),
-										Description: `The user for authentication.`,
-									},
-									"secret": schema.StringAttribute{
-										Required:    true,
-										Description: `The secret for authentication, either password or token.`,
-										Sensitive:   true,
-									},
-								},
-							},
-							"insecure": schema.BoolAttribute{
-								Optional:    true,
-								Computed:    true,
-								Default:     booldefault.StaticBool(false),
-								Description: `Specify to pull the artifact with insecure mode.`,
-							},
-						},
-					},
-					"runtime": schema.StringAttribute{
-						Required:    true,
-						Description: `The runtime of the artifact.`,
-					},
-					"command": schema.StringAttribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     stringdefault.StaticString(""),
-						Description: `The command to start the artifact.`,
-					},
-					"ports": schema.ListAttribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     listdefault.StaticValue(basetypes.NewListNull(types.Int64Type)),
-						Description: `The ports of the artifact.`,
-						ElementType: types.Int64Type,
-					},
-					"envs": schema.MapAttribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     mapdefault.StaticValue(basetypes.NewMapNull(types.StringType)),
-						Description: `The environment variables of the artifact.`,
-						ElementType: types.StringType,
-					},
-					"volumes": schema.ListAttribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     listdefault.StaticValue(basetypes.NewListNull(types.StringType)),
-						Description: `The volumes of the artifact.`,
-						ElementType: types.StringType,
-					},
-					"digest": schema.StringAttribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     stringdefault.StaticString(""),
-						Description: `The digest of the artifact, in form of algorithm:checksum.`,
-					},
-				},
-			},
 			"targets": schema.ListNestedAttribute{
 				Required:    true,
 				Description: `The targets of the deployment.`,
@@ -731,24 +633,33 @@ in the form of [schema://](ip|dns)[:port].`,
 									Description: `The authentication for accessing the host.`,
 									Attributes: map[string]schema.Attribute{
 										"type": schema.StringAttribute{
-											Optional:    true,
-											Computed:    true,
-											Default:     stringdefault.StaticString("ssh"),
+											Optional: true,
+											Computed: true,
+											Default: stringdefault.StaticString(
+												"ssh",
+											),
 											Description: `The type to access the target, either "ssh" or "winrm".`,
 											Validators: []validator.String{
-												stringvalidator.OneOf("ssh", "winrm"),
+												stringvalidator.OneOf(
+													"ssh",
+													"winrm",
+												),
 											},
 										},
 										"user": schema.StringAttribute{
-											Optional:    true,
-											Computed:    true,
-											Default:     stringdefault.StaticString("root"),
+											Optional: true,
+											Computed: true,
+											Default: stringdefault.StaticString(
+												"root",
+											),
 											Description: `The user to authenticate when accessing the target.`,
 										},
 										"secret": schema.StringAttribute{
 											Optional: true,
 											Computed: true,
-											Default:  stringdefault.StaticString(""),
+											Default: stringdefault.StaticString(
+												"",
+											),
 											Description: `The secret to authenticate when accessing the target, 
 either password or private key.`,
 											Sensitive: true,
@@ -756,16 +667,20 @@ either password or private key.`,
 										"agent": schema.BoolAttribute{
 											Optional: true,
 											Computed: true,
-											Default:  booldefault.StaticBool(false),
+											Default: booldefault.StaticBool(
+												false,
+											),
 											Description: `Specify to access the target with agent,
 either SSH agent if type is "ssh" or NTLM if type is "winrm".`,
 										},
 									},
 								},
 								"insecure": schema.BoolAttribute{
-									Optional:    true,
-									Computed:    true,
-									Default:     booldefault.StaticBool(false),
+									Optional: true,
+									Computed: true,
+									Default: booldefault.StaticBool(
+										false,
+									),
 									Description: `Specify to access the target with insecure mode.`,
 								},
 								"proxies": schema.ListNestedAttribute{
@@ -779,7 +694,9 @@ either a bastion host or a jump host.`,
 												Description: `The address to access the proxy, 
 in the form of [schema://](ip|dns)[:port].`,
 												Validators: []validator.String{
-													stringvalidator.LengthAtLeast(1),
+													stringvalidator.LengthAtLeast(
+														1,
+													),
 												},
 											},
 											"authn": schema.SingleNestedAttribute{
@@ -789,24 +706,33 @@ in the form of [schema://](ip|dns)[:port].`,
 													"type": schema.StringAttribute{
 														Optional: true,
 														Computed: true,
-														Default:  stringdefault.StaticString("proxy"),
+														Default: stringdefault.StaticString(
+															"proxy",
+														),
 														Description: `The type to access the proxy, 
 either "ssh" or "proxy".`,
 														Validators: []validator.String{
-															stringvalidator.OneOf("ssh", "proxy"),
+															stringvalidator.OneOf(
+																"ssh",
+																"proxy",
+															),
 														},
 													},
 													"user": schema.StringAttribute{
 														Optional: true,
 														Computed: true,
-														Default:  stringdefault.StaticString(""),
+														Default: stringdefault.StaticString(
+															"",
+														),
 														Description: `The user to authenticate 
 when accessing the proxy.`,
 													},
 													"secret": schema.StringAttribute{
 														Optional: true,
 														Computed: true,
-														Default:  stringdefault.StaticString(""),
+														Default: stringdefault.StaticString(
+															"",
+														),
 														Description: `The secret to authenticate 
 when accessing the proxy, either password or private key.`,
 														Sensitive: true,
@@ -814,9 +740,11 @@ when accessing the proxy, either password or private key.`,
 												},
 											},
 											"insecure": schema.BoolAttribute{
-												Optional:    true,
-												Computed:    true,
-												Default:     booldefault.StaticBool(false),
+												Optional: true,
+												Computed: true,
+												Default: booldefault.StaticBool(
+													false,
+												),
 												Description: `Specify to access the target with insecure mode.`,
 											},
 										},
@@ -832,6 +760,174 @@ when accessing the proxy, either password or private key.`,
 							Required:    true,
 							Description: `The architecture of the target.`,
 						},
+					},
+				},
+			},
+			"runtime": schema.SingleNestedAttribute{
+				Required:    true,
+				Description: `The runtime of the deployment.`,
+				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Required:    true,
+						Description: `The ID of the runtime.`,
+					},
+					"class": schema.StringAttribute{
+						Required:    true,
+						Description: `Specify the class of the runtime.`,
+					},
+					"source": schema.StringAttribute{
+						Optional: true,
+						Description: `The source to fetch the runtime, 
+only support a git repository at present.
+
+  - For example:
+    - https://github.com/foo/bar, clone the HEAD commit of the default branch.
+    - https://github.com/foo/bar//subpath, clone the HEAD commit of the default branch, 
+      and use the subdirectory.
+    - https://github.com/foo/bar?ref=dev, clone the "dev" commit.
+  - Comply with the following structure:
+` + "    ```" + `
+    /tomcat     	 # the name of the runtime.
+      /linux         # the os supported by the runtime.
+        /service.sh  # the POSIX shell script, must name as service.sh.
+          setup
+          start
+          state
+          stop
+          cleanup
+      /windows
+        /service.ps1 # the PowerShell script, must name as service.ps1.
+` + "    ```",
+					},
+					"authn": schema.SingleNestedAttribute{
+						Optional:    true,
+						Description: `The authentication for fetching the runtime.`,
+						Attributes: map[string]schema.Attribute{
+							"type": schema.StringAttribute{
+								Optional:    true,
+								Description: `The type for authentication, either "basic" or "bearer".`,
+								Validators: []validator.String{
+									stringvalidator.OneOf(
+										"basic",
+										"bearer",
+									),
+								},
+							},
+							"user": schema.StringAttribute{
+								Optional:    true,
+								Description: `The user for authentication.`,
+							},
+							"secret": schema.StringAttribute{
+								Required:    true,
+								Description: `The secret for authentication, either password or token.`,
+								Sensitive:   true,
+							},
+						},
+					},
+					"insecure": schema.BoolAttribute{
+						Optional:    true,
+						Description: `Specify to fetch the runtime with insecure mode.`,
+					},
+				},
+			},
+			"artifact": schema.SingleNestedAttribute{
+				Required:    true,
+				Description: `The artifact of the deployment.`,
+				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Required:    true,
+						Description: `The ID of the artifact.`,
+					},
+					"refer": schema.SingleNestedAttribute{
+						Required:    true,
+						Description: `The reference of the artifact.`,
+						Attributes: map[string]schema.Attribute{
+							"uri": schema.StringAttribute{
+								Required:    true,
+								Description: `The reference to pull the artifact.`,
+								Validators: []validator.String{
+									stringvalidator.LengthAtLeast(1),
+								},
+							},
+							"authn": schema.SingleNestedAttribute{
+								Optional:    true,
+								Description: `The authentication for pulling the artifact.`,
+								Attributes: map[string]schema.Attribute{
+									"type": schema.StringAttribute{
+										Optional: true,
+										Computed: true,
+										Default: stringdefault.StaticString(
+											"basic",
+										),
+										Description: `The type for authentication, either "basic" or "bearer".`,
+										Validators: []validator.String{
+											stringvalidator.OneOf(
+												"basic",
+												"bearer",
+											),
+										},
+									},
+									"user": schema.StringAttribute{
+										Optional: true,
+										Computed: true,
+										Default: stringdefault.StaticString(
+											"",
+										),
+										Description: `The user for authentication.`,
+									},
+									"secret": schema.StringAttribute{
+										Required:    true,
+										Description: `The secret for authentication, either password or token.`,
+										Sensitive:   true,
+									},
+								},
+							},
+							"insecure": schema.BoolAttribute{
+								Optional:    true,
+								Computed:    true,
+								Default:     booldefault.StaticBool(false),
+								Description: `Specify to pull the artifact with insecure mode.`,
+							},
+						},
+					},
+					"command": schema.StringAttribute{
+						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
+						Description: `The command to start the artifact.`,
+					},
+					"ports": schema.ListAttribute{
+						Optional: true,
+						Computed: true,
+						Default: listdefault.StaticValue(
+							basetypes.NewListNull(types.Int64Type),
+						),
+						Description: `The ports of the artifact.`,
+						ElementType: types.Int64Type,
+					},
+					"envs": schema.MapAttribute{
+						Optional: true,
+						Computed: true,
+						Default: mapdefault.StaticValue(
+							basetypes.NewMapNull(types.StringType),
+						),
+						Description: `The environment variables of the artifact.`,
+						ElementType: types.StringType,
+					},
+					"volumes": schema.ListAttribute{
+						Optional: true,
+						Computed: true,
+						Default: listdefault.StaticValue(
+							basetypes.NewListNull(types.StringType),
+						),
+						Description: `The volumes of the artifact.`,
+						ElementType: types.StringType,
+					},
+					"digest": schema.StringAttribute{
+						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
+						Description: `The digest of the artifact, in form of algorithm:checksum.`,
 					},
 				},
 			},
@@ -854,9 +950,11 @@ either "recreate" or "rolling".`,
 						Description: `The rolling strategy of the deployment.`,
 						Attributes: map[string]schema.Attribute{
 							"max_surge": schema.Float64Attribute{
-								Optional:    true,
-								Computed:    true,
-								Default:     float64default.StaticFloat64(0.3),
+								Optional: true,
+								Computed: true,
+								Default: float64default.StaticFloat64(
+									0.3,
+								),
 								Description: `The maximum percent of targets to deploy at once.`,
 								Validators: []validator.Float64{
 									float64validator.AtLeast(0.1),
@@ -880,7 +978,11 @@ either "recreate" or "rolling".`,
 	}
 }
 
-func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceDeployment) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan ResourceDeployment
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -888,7 +990,6 @@ func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	plan._ProviderConfig = r._ProviderConfig
 	plan.ID = types.StringValue(plan.Hash())
 
 	{
@@ -912,10 +1013,18 @@ func (r *ResourceDeployment) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *ResourceDeployment) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceDeployment) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 }
 
-func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceDeployment) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan, state ResourceDeployment
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -924,7 +1033,6 @@ func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	plan._ProviderConfig = r._ProviderConfig
 	plan.ID = types.StringValue(plan.Hash())
 
 	if !plan.Equal(state) {
@@ -971,7 +1079,11 @@ func (r *ResourceDeployment) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceDeployment) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state ResourceDeployment
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -993,24 +1105,5 @@ func (r *ResourceDeployment) Delete(ctx context.Context, req resource.DeleteRequ
 	resp.Diagnostics.Append(state.Release(ctx)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-}
-
-func (r *ResourceDeployment) Configure(
-	ctx context.Context,
-	req resource.ConfigureRequest,
-	resp *resource.ConfigureResponse,
-) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	var ok bool
-	r._ProviderConfig, ok = req.ProviderData.(ProviderConfig)
-	if !ok {
-		resp.Diagnostics.Append(diag.NewErrorDiagnostic(
-			"Invalid Provider Config",
-			"Unknown provider config type",
-		))
 	}
 }

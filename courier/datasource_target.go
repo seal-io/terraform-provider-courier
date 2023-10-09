@@ -6,32 +6,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/target"
 	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
-var _ resource.ResourceWithConfigure = (*ResourceTarget)(nil)
+var _ datasource.DataSource = (*DataSourceTarget)(nil)
 
 type (
-	ResourceTarget struct {
-		_ProviderConfig ProviderConfig
-
-		Host     ResourceTargetHost `tfsdk:"host"`
-		Timeouts timeouts.Value     `tfsdk:"timeouts"`
+	DataSourceTarget struct {
+		Host     DataSourceTargetHost `tfsdk:"host"`
+		Timeouts timeouts.Value       `tfsdk:"timeouts"`
 
 		ID      types.String `tfsdk:"id"`
 		OS      types.String `tfsdk:"os"`
@@ -39,46 +32,50 @@ type (
 		Version types.String `tfsdk:"version"`
 	}
 
-	ResourceTargetHost struct {
-		Address  types.String              `tfsdk:"address"`
-		Authn    ResourceTargetHostAuthn   `tfsdk:"authn"`
-		Insecure types.Bool                `tfsdk:"insecure"`
-		Proxies  []ResourceTargetHostProxy `tfsdk:"proxies"`
+	DataSourceTargetHost struct {
+		Address  types.String                `tfsdk:"address"`
+		Authn    DataSourceTargetHostAuthn   `tfsdk:"authn"`
+		Insecure types.Bool                  `tfsdk:"insecure"`
+		Proxies  []DataSourceTargetHostProxy `tfsdk:"proxies"`
 	}
 
-	ResourceTargetHostAuthn struct {
+	DataSourceTargetHostAuthn struct {
 		Type   types.String `tfsdk:"type"`
 		User   types.String `tfsdk:"user"`
 		Secret types.String `tfsdk:"secret"`
 		Agent  types.Bool   `tfsdk:"agent"`
 	}
 
-	ResourceTargetHostProxy struct {
-		Address  types.String            `tfsdk:"address"`
-		Authn    ResourceTargetHostAuthn `tfsdk:"authn"`
-		Insecure types.Bool              `tfsdk:"insecure"`
+	DataSourceTargetHostProxy struct {
+		Address  types.String                   `tfsdk:"address"`
+		Authn    DataSourceTargetHostProxyAuthn `tfsdk:"authn"`
+		Insecure types.Bool                     `tfsdk:"insecure"`
 	}
 
-	ResourceTargetHostProxyAuthn struct {
+	DataSourceTargetHostProxyAuthn struct {
 		Type   types.String `tfsdk:"type"`
 		User   types.String `tfsdk:"user"`
 		Secret types.String `tfsdk:"secret"`
 	}
 )
 
-func NewResourceTarget() resource.Resource {
-	return &ResourceTarget{}
+func NewDataSourceTarget() datasource.DataSource {
+	return &DataSourceTarget{}
 }
 
-func (r *ResourceTarget) Equal(l ResourceTarget) bool {
-	return r.Host.Equal(l.Host)
+func (r *DataSourceTarget) Equal(l DataSourceTarget) bool {
+	return r.Host.Address.Equal(l.Host.Address)
 }
 
-func (r *ResourceTarget) Hash() string {
-	return r.Host.Hash()
+func (r *DataSourceTarget) Hash() string {
+	return strx.Sum(r.Host.Address.ValueString())
 }
 
-func (r *ResourceTarget) State(ctx context.Context) (diags diag.Diagnostics) {
+func (r *DataSourceTarget) State(
+	ctx context.Context,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	h, err := r.Host.Reflect(ctx)
 	if err != nil {
 		diags.Append(diag.NewAttributeErrorDiagnostic(
@@ -87,7 +84,7 @@ func (r *ResourceTarget) State(ctx context.Context) (diags diag.Diagnostics) {
 			fmt.Sprintf("Cannot reflect from host: %v", err),
 		))
 
-		return
+		return diags
 	}
 
 	s, err := h.State(ctx)
@@ -105,18 +102,12 @@ func (r *ResourceTarget) State(ctx context.Context) (diags diag.Diagnostics) {
 		r.Version = types.StringValue(s.Version)
 	}
 
-	return
+	return diags
 }
 
-func (r ResourceTargetHost) Equal(l ResourceTargetHost) bool {
-	return r.Address.Equal(l.Address)
-}
-
-func (r ResourceTargetHost) Hash() string {
-	return strx.Sum(r.Address.ValueString())
-}
-
-func (r ResourceTargetHost) Reflect(_ context.Context) (target.Host, error) {
+func (r DataSourceTargetHost) Reflect(
+	_ context.Context,
+) (target.Host, error) {
 	opts := target.HostOptions{
 		HostOption: target.HostOption{
 			Address: r.Address.ValueString(),
@@ -148,19 +139,22 @@ func (r ResourceTargetHost) Reflect(_ context.Context) (target.Host, error) {
 	return target.NewHost(opts)
 }
 
-func (r ResourceTargetHostProxy) Equal(l ResourceTargetHostProxy) bool {
-	return r.Address.Equal(l.Address)
+func (r *DataSourceTarget) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
+	resp.TypeName = strings.Join(
+		[]string{req.ProviderTypeName, "target"},
+		"_",
+	)
 }
 
-func (r ResourceTargetHostProxy) Hash() string {
-	return strx.Sum(r.Address.ValueString())
-}
-
-func (r *ResourceTarget) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "target"}, "_")
-}
-
-func (r *ResourceTarget) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *DataSourceTarget) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: `Specify the target to deploy.`,
 		Attributes: map[string]schema.Attribute{
@@ -169,9 +163,6 @@ func (r *ResourceTarget) Schema(ctx context.Context, req resource.SchemaRequest,
 				Description: `Specify the target to access.`,
 				Attributes: map[string]schema.Attribute{
 					"address": schema.StringAttribute{
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.RequiresReplace(),
-						},
 						Required: true,
 						Description: `The address to access the target, 
 in the form of [schema://](ip|dns)[:port].`,
@@ -184,9 +175,7 @@ in the form of [schema://](ip|dns)[:port].`,
 						Description: `The authentication for accessing the host.`,
 						Attributes: map[string]schema.Attribute{
 							"type": schema.StringAttribute{
-								Optional:    true,
-								Computed:    true,
-								Default:     stringdefault.StaticString("ssh"),
+								Required:    true,
 								Description: `The type to access the target, either "ssh" or "winrm".`,
 								Validators: []validator.String{
 									stringvalidator.OneOf("ssh", "winrm"),
@@ -194,14 +183,10 @@ in the form of [schema://](ip|dns)[:port].`,
 							},
 							"user": schema.StringAttribute{
 								Optional:    true,
-								Computed:    true,
-								Default:     stringdefault.StaticString("root"),
 								Description: `The user to authenticate when accessing the target.`,
 							},
 							"secret": schema.StringAttribute{
 								Optional: true,
-								Computed: true,
-								Default:  stringdefault.StaticString(""),
 								Description: `The secret to authenticate when accessing the target, 
 either password or private key.`,
 								Sensitive: true,
@@ -209,7 +194,6 @@ either password or private key.`,
 							"agent": schema.BoolAttribute{
 								Optional: true,
 								Computed: true,
-								Default:  booldefault.StaticBool(false),
 								Description: `Specify to access the target with agent,
 either SSH agent if type is "ssh" or NTLM if type is "winrm".`,
 							},
@@ -217,8 +201,6 @@ either SSH agent if type is "ssh" or NTLM if type is "winrm".`,
 					},
 					"insecure": schema.BoolAttribute{
 						Optional:    true,
-						Computed:    true,
-						Default:     booldefault.StaticBool(false),
 						Description: `Specify to access the target with insecure mode.`,
 					},
 					"proxies": schema.ListNestedAttribute{
@@ -240,24 +222,21 @@ in the form of [schema://](ip|dns)[:port].`,
 									Description: `The authentication for accessing the proxy.`,
 									Attributes: map[string]schema.Attribute{
 										"type": schema.StringAttribute{
-											Optional:    true,
-											Computed:    true,
-											Default:     stringdefault.StaticString("proxy"),
+											Required:    true,
 											Description: `The type to access the proxy, either "ssh" or "proxy".`,
 											Validators: []validator.String{
-												stringvalidator.OneOf("ssh", "proxy"),
+												stringvalidator.OneOf(
+													"ssh",
+													"proxy",
+												),
 											},
 										},
 										"user": schema.StringAttribute{
 											Optional:    true,
-											Computed:    true,
-											Default:     stringdefault.StaticString(""),
 											Description: `The user to authenticate when accessing the proxy.`,
 										},
 										"secret": schema.StringAttribute{
 											Optional: true,
-											Computed: true,
-											Default:  stringdefault.StaticString(""),
 											Description: `The secret to authenticate when accessing the proxy, 
 either password or private key.`,
 											Sensitive: true,
@@ -266,8 +245,6 @@ either password or private key.`,
 								},
 								"insecure": schema.BoolAttribute{
 									Optional:    true,
-									Computed:    true,
-									Default:     booldefault.StaticBool(false),
 									Description: `Specify to access the target with insecure mode.`,
 								},
 							},
@@ -275,10 +252,7 @@ either password or private key.`,
 					},
 				},
 			},
-			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
-				Create: true,
-				Update: true,
-			}),
+			"timeouts": timeouts.Attributes(ctx),
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: `The ID of the target.`,
@@ -299,20 +273,23 @@ either password or private key.`,
 	}
 }
 
-func (r *ResourceTarget) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan ResourceTarget
+func (r *DataSourceTarget) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
+	var plan DataSourceTarget
 
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	plan._ProviderConfig = r._ProviderConfig
 	plan.ID = types.StringValue(plan.Hash())
 
 	{
 		// Get Timeout.
-		timeout, diags := plan.Timeouts.Create(ctx, 10*time.Minute)
+		timeout, diags := plan.Timeouts.Read(ctx, 10*time.Minute)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -329,64 +306,4 @@ func (r *ResourceTarget) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-}
-
-func (r *ResourceTarget) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-}
-
-func (r *ResourceTarget) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state ResourceTarget
-
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	plan._ProviderConfig = r._ProviderConfig
-	plan.ID = types.StringValue(plan.Hash())
-
-	if !plan.Equal(state) {
-		tflog.Debug(ctx, "Changed, stating again...")
-
-		// Get Timeout.
-		timeout, diags := plan.Timeouts.Update(ctx, 10*time.Minute)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-
-		// State.
-		resp.Diagnostics.Append(plan.State(ctx)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-}
-
-func (r *ResourceTarget) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-}
-
-func (r *ResourceTarget) Configure(
-	ctx context.Context,
-	req resource.ConfigureRequest,
-	resp *resource.ConfigureResponse,
-) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	var ok bool
-	r._ProviderConfig, ok = req.ProviderData.(ProviderConfig)
-	if !ok {
-		resp.Diagnostics.Append(diag.NewErrorDiagnostic(
-			"Invalid Provider Config",
-			"Unknown provider config type",
-		))
-	}
 }

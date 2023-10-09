@@ -9,7 +9,10 @@ import (
 	"github.com/seal-io/terraform-provider-courier/pkg/target/types"
 )
 
-func Dial(forward types.DialCloser, dialHost types.HostOption) (*winrm.Client, error) {
+func Dial(
+	forward types.DialCloser,
+	dialHost types.HostOption,
+) (*winrm.Client, error) {
 	ap, err := dialHost.ParseAddress()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse proxy address: %w", err)
@@ -41,9 +44,17 @@ func Dial(forward types.DialCloser, dialHost types.HostOption) (*winrm.Client, e
 		}
 	}
 
-	cli, err := winrm.NewClientWithParameters(ep, dialHost.Authn.User, dialHost.Authn.Secret, ps)
+	cli, err := winrm.NewClientWithParameters(
+		ep,
+		dialHost.Authn.User,
+		dialHost.Authn.Secret,
+		ps,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create WinRM client connection: %w", err)
+		return nil, fmt.Errorf(
+			"failed to create WinRM client connection: %w",
+			err,
+		)
 	}
 
 	return cli, nil

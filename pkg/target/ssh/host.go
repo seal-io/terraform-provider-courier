@@ -32,7 +32,11 @@ func New(opts types.HostOptions) (types.Host, error) {
 
 	proxies, err := proxyWith(types.DialClosers{}, opts.Proxies)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dail %s via proxies: %w", opts.Address, err)
+		return nil, fmt.Errorf(
+			"failed to dail %s via proxies: %w",
+			opts.Address,
+			err,
+		)
 	}
 
 	c, err := Dial(proxies, opts.HostOption)
@@ -46,7 +50,10 @@ func New(opts types.HostOptions) (types.Host, error) {
 	}, nil
 }
 
-func proxyWith(pds types.DialClosers, dhs []types.HostOption) (d types.DialCloser, err error) {
+func proxyWith(
+	pds types.DialClosers,
+	dhs []types.HostOption,
+) (d types.DialCloser, err error) {
 	if len(dhs) == 0 {
 		return pds, nil
 	}
@@ -94,7 +101,10 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 	// Refer to https://stackoverflow.com/questions/45125516/possible-values-for-uname-m.
 	archBs, err := t.ExecuteWithOutput("uname", "-m")
 	if err != nil {
-		return types.HostStatus{}, fmt.Errorf("failed to get arch: %w", err)
+		return types.HostStatus{}, fmt.Errorf(
+			"failed to get arch: %w",
+			err,
+		)
 	}
 	arch := strings.ToLower(strx.FromBytes(&archBs))
 
@@ -113,7 +123,10 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 
 	versionBs, err := t.ExecuteWithOutput("uname", "-r")
 	if err != nil {
-		return types.HostStatus{}, fmt.Errorf("failed to get kernel version: %w", err)
+		return types.HostStatus{}, fmt.Errorf(
+			"failed to get kernel version: %w",
+			err,
+		)
 	}
 	version := strings.ToLower(strx.FromBytes(&versionBs))
 
@@ -125,7 +138,11 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 	}, nil
 }
 
-func (h *Host) Execute(ctx context.Context, cmd string, args ...string) error {
+func (h *Host) Execute(
+	ctx context.Context,
+	cmd string,
+	args ...string,
+) error {
 	if cmd == "" {
 		return errors.New("blank command")
 	}
@@ -142,7 +159,11 @@ func (h *Host) Execute(ctx context.Context, cmd string, args ...string) error {
 	return s.Run(command)
 }
 
-func (h *Host) ExecuteWithOutput(ctx context.Context, cmd string, args ...string) ([]byte, error) {
+func (h *Host) ExecuteWithOutput(
+	ctx context.Context,
+	cmd string,
+	args ...string,
+) ([]byte, error) {
 	if cmd == "" {
 		return nil, errors.New("blank command")
 	}
@@ -166,7 +187,9 @@ type session struct {
 	Cancel context.CancelFunc
 }
 
-func (h *Host) getSessionWithContext(ctx context.Context) (*session, error) {
+func (h *Host) getSessionWithContext(
+	ctx context.Context,
+) (*session, error) {
 	s, err := h.client.NewSession()
 	if err != nil {
 		return nil, err

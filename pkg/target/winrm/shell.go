@@ -25,7 +25,10 @@ type Terminal struct {
 	echo    string
 }
 
-func (h *Host) Shell(ctx context.Context, cmdArgs ...string) (types.Terminal, error) {
+func (h *Host) Shell(
+	ctx context.Context,
+	cmdArgs ...string,
+) (types.Terminal, error) {
 	echo := fmt.Sprintf(`#%s#`, strx.Hex(8))
 
 	s, err := h.client.CreateShell()
@@ -71,7 +74,10 @@ func (t *Terminal) Execute(cmd string, args ...string) error {
 	return t.execute(io.Discard, cmd, args)
 }
 
-func (t *Terminal) ExecuteWithOutput(cmd string, args ...string) ([]byte, error) {
+func (t *Terminal) ExecuteWithOutput(
+	cmd string,
+	args ...string,
+) ([]byte, error) {
 	buf := bytespool.GetBuffer()
 	defer func() { bytespool.Put(buf) }()
 

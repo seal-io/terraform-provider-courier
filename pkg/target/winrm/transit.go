@@ -10,7 +10,11 @@ import (
 	"github.com/seal-io/terraform-provider-courier/utils/bytespool"
 )
 
-func (h *Host) UploadFile(ctx context.Context, from types.FileReader, to string) (err error) {
+func (h *Host) UploadFile(
+	ctx context.Context,
+	from types.FileReader,
+	to string,
+) (err error) {
 	if from == nil {
 		return errors.New("nil local file reader")
 	}
@@ -48,7 +52,11 @@ func (h *Host) UploadFile(ctx context.Context, from types.FileReader, to string)
 	return err
 }
 
-func (h *Host) UploadDirectory(ctx context.Context, from types.DirectoryReader, to string) error {
+func (h *Host) UploadDirectory(
+	ctx context.Context,
+	from types.DirectoryReader,
+	to string,
+) error {
 	if from == nil {
 		return errors.New("nil local directory reader")
 	}
@@ -69,46 +77,53 @@ func (h *Host) UploadDirectory(ctx context.Context, from types.DirectoryReader, 
 		return err
 	}
 
-	return fs.WalkDir(from, ".", func(p string, d fs.DirEntry, ierr error) (err error) {
-		if ierr != nil {
-			return ierr
-		}
-
-		if d.IsDir() {
-			return c.MkdirAll(to + "/" + p)
-		}
-
-		rd, err := from.Open(p)
-		if err != nil {
-			return err
-		}
-
-		defer func() { _ = rd.Close() }()
-
-		wr, err := c.Create(to + "/" + p)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			if cerr := wr.Close(); err == nil {
-				err = cerr
+	return fs.WalkDir(
+		from,
+		".",
+		func(p string, d fs.DirEntry, ierr error) (err error) {
+			if ierr != nil {
+				return ierr
 			}
-		}()
 
-		// NB(thxCode): Inspired by
-		// https://github.com/packer-community/winrmcp/blob/6e900dd2c68f81845f61265562b6299a806162e0/winrmcp/cp.go.
-		bs := ((8000 - len(to)) / 4) * 3
+			if d.IsDir() {
+				return c.MkdirAll(to + "/" + p)
+			}
 
-		buf := bytespool.GetBytes(bs)
-		defer func() { bytespool.Put(buf) }()
+			rd, err := from.Open(p)
+			if err != nil {
+				return err
+			}
 
-		_, err = io.CopyBuffer(wr, rd, buf)
-		return err
-	})
+			defer func() { _ = rd.Close() }()
+
+			wr, err := c.Create(to + "/" + p)
+			if err != nil {
+				return err
+			}
+
+			defer func() {
+				if cerr := wr.Close(); err == nil {
+					err = cerr
+				}
+			}()
+
+			// NB(thxCode): Inspired by
+			// https://github.com/packer-community/winrmcp/blob/6e900dd2c68f81845f61265562b6299a806162e0/winrmcp/cp.go.
+			bs := ((8000 - len(to)) / 4) * 3
+
+			buf := bytespool.GetBytes(bs)
+			defer func() { bytespool.Put(buf) }()
+
+			_, err = io.CopyBuffer(wr, rd, buf)
+			return err
+		},
+	)
 }
 
-func (h *Host) DownloadFile(ctx context.Context, from string) (types.FileReadCloser, error) {
+func (h *Host) DownloadFile(
+	ctx context.Context,
+	from string,
+) (types.FileReadCloser, error) {
 	if from == "" {
 		return nil, errors.New("blank remote file path")
 	}
@@ -138,7 +153,10 @@ func (h *Host) DownloadFile(ctx context.Context, from string) (types.FileReadClo
 	return f, nil
 }
 
-func (h *Host) DownloadDirectory(ctx context.Context, from string) (types.DirectoryReadCloser, error) {
+func (h *Host) DownloadDirectory(
+	ctx context.Context,
+	from string,
+) (types.DirectoryReadCloser, error) {
 	if from == "" {
 		return nil, errors.New("blank remote directory path")
 	}
@@ -151,7 +169,9 @@ func (h *Host) DownloadDirectory(ctx context.Context, from string) (types.Direct
 	return c, nil
 }
 
-func (h *Host) getFileTransportWithContext(ctx context.Context) (*fileTransport, error) {
+func (h *Host) getFileTransportWithContext(
+	ctx context.Context,
+) (*fileTransport, error) {
 	s, err := h.client.CreateShell()
 	if err != nil {
 		return nil, err

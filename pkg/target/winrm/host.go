@@ -32,7 +32,11 @@ func New(opts types.HostOptions) (types.Host, error) {
 
 	proxies, err := proxyWith(types.DialClosers{}, opts.Proxies)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dail %s via proxies: %w", opts.Address, err)
+		return nil, fmt.Errorf(
+			"failed to dail %s via proxies: %w",
+			opts.Address,
+			err,
+		)
 	}
 
 	c, err := Dial(proxies, opts.HostOption)
@@ -45,7 +49,10 @@ func New(opts types.HostOptions) (types.Host, error) {
 	}, nil
 }
 
-func proxyWith(pds types.DialClosers, dhs []types.HostOption) (d types.DialCloser, err error) {
+func proxyWith(
+	pds types.DialClosers,
+	dhs []types.HostOption,
+) (d types.DialCloser, err error) {
 	if len(dhs) == 0 {
 		return pds, nil
 	}
@@ -91,7 +98,10 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 		),
 	)
 	if err != nil {
-		return types.HostStatus{}, fmt.Errorf("failed to get arch: %w", err)
+		return types.HostStatus{}, fmt.Errorf(
+			"failed to get arch: %w",
+			err,
+		)
 	}
 	arch := strings.ToLower(strx.FromBytes(&archBs))
 
@@ -123,7 +133,10 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 		),
 	)
 	if err != nil {
-		return types.HostStatus{}, fmt.Errorf("failed to get kernel version: %w", err)
+		return types.HostStatus{}, fmt.Errorf(
+			"failed to get kernel version: %w",
+			err,
+		)
 	}
 	version := strings.ToLower(strx.FromBytes(&versionBs))
 
@@ -135,11 +148,19 @@ func (h *Host) State(ctx context.Context) (types.HostStatus, error) {
 	}, nil
 }
 
-func (h *Host) Execute(ctx context.Context, cmd string, args ...string) error {
+func (h *Host) Execute(
+	ctx context.Context,
+	cmd string,
+	args ...string,
+) error {
 	return h.execute(ctx, io.Discard, cmd, args)
 }
 
-func (h *Host) ExecuteWithOutput(ctx context.Context, cmd string, args ...string) ([]byte, error) {
+func (h *Host) ExecuteWithOutput(
+	ctx context.Context,
+	cmd string,
+	args ...string,
+) ([]byte, error) {
 	buf := bytespool.GetBuffer()
 	defer func() { bytespool.Put(buf) }()
 
@@ -147,7 +168,12 @@ func (h *Host) ExecuteWithOutput(ctx context.Context, cmd string, args ...string
 	return buf.Bytes(), err
 }
 
-func (h *Host) execute(ctx context.Context, out io.Writer, cmd string, args []string) error {
+func (h *Host) execute(
+	ctx context.Context,
+	out io.Writer,
+	cmd string,
+	args []string,
+) error {
 	if cmd == "" {
 		return errors.New("blank command")
 	}

@@ -25,7 +25,11 @@ func EncodeExecInput(platform, cmd string, args []string) string {
 	return fn(cmds)
 }
 
-func EncodeShellInput(platform, cmd string, args []string, echo string) string {
+func EncodeShellInput(
+	platform, cmd string,
+	args []string,
+	echo string,
+) string {
 	tail := fmt.Sprintf("; echo $?%s;\n", echo)
 	if strings.EqualFold(platform, "windows") {
 		tail = fmt.Sprintf("; Write-Output $?%s`r`n\n", echo)

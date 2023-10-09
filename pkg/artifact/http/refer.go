@@ -62,19 +62,28 @@ func New(opts types.ReferOptions) (types.Refer, error) {
 func (p *Package) State(ctx context.Context) (types.ReferStatus, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		return types.ReferStatus{}, fmt.Errorf("failed to create request: %w", err)
+		return types.ReferStatus{}, fmt.Errorf(
+			"failed to create request: %w",
+			err,
+		)
 	}
 
 	cli := http.Client{Transport: p.rt}
 
 	resp, err := cli.Do(req)
 	if err != nil {
-		return types.ReferStatus{}, fmt.Errorf("failed to do request: %w", err)
+		return types.ReferStatus{}, fmt.Errorf(
+			"failed to do request: %w",
+			err,
+		)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return types.ReferStatus{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return types.ReferStatus{}, fmt.Errorf(
+			"unexpected status code: %d",
+			resp.StatusCode,
+		)
 	}
 
 	hash := sha256.New()
@@ -84,7 +93,10 @@ func (p *Package) State(ctx context.Context) (types.ReferStatus, error) {
 
 	length, err := io.CopyBuffer(hash, resp.Body, buf)
 	if err != nil {
-		return types.ReferStatus{}, fmt.Errorf("failed to hash response: %w", err)
+		return types.ReferStatus{}, fmt.Errorf(
+			"failed to hash response: %w",
+			err,
+		)
 	}
 
 	digest := hex.EncodeToString(hash.Sum(nil))
