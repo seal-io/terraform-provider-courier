@@ -46,11 +46,11 @@ func NewDataSourceRuntime() datasource.DataSource {
 }
 
 func (r *DataSourceRuntime) Equal(l DataSourceRuntime) bool {
-	return r.Source.Equal(l.Source)
+	return r.Source.Equal(l.Source) && r.Class.Equal(l.Class)
 }
 
 func (r *DataSourceRuntime) Hash() string {
-	return strx.Sum(r.Source.ValueString())
+	return strx.Sum(r.Source.ValueString(), r.Class.ValueString())
 }
 
 func (r *DataSourceRuntime) Metadata(

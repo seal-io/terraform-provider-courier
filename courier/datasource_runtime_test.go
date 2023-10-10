@@ -32,7 +32,7 @@ data "courier_runtime" "test" {
 					resource.TestCheckResourceAttr(
 						resourceName,
 						"id",
-						"cbf29ce484222325",
+						"0efd5dbf5f4ebc3d",
 					),
 				),
 			},
@@ -56,7 +56,7 @@ data "courier_runtime" "test" {
 					resource.TestCheckResourceAttr(
 						resourceName,
 						"id",
-						"0ee8fd3d28a259f9",
+						"22505c31b3d5d641",
 					),
 				),
 			},

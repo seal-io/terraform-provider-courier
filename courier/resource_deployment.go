@@ -22,7 +22,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -768,6 +770,9 @@ when accessing the proxy, either password or private key.`,
 				Description: `The runtime of the deployment.`,
 				Attributes: map[string]schema.Attribute{
 					"id": schema.StringAttribute{
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Required:    true,
 						Description: `The ID of the runtime.`,
 					},
@@ -835,6 +840,9 @@ only support a git repository at present.
 				Description: `The artifact of the deployment.`,
 				Attributes: map[string]schema.Attribute{
 					"id": schema.StringAttribute{
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Required:    true,
 						Description: `The ID of the artifact.`,
 					},

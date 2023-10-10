@@ -163,6 +163,7 @@ cleanup() {
   rc=$(root_call)
 
   ${rc} "docker remove --force --volumes ${art}"
+  ${rc} "rm -rf ${COURIER_PATH}/${art}"
 }
 
 #
