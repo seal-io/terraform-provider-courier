@@ -108,7 +108,7 @@ data "courier_artifact" "test" {
 					resource.TestCheckResourceAttr(
 						resourceName,
 						"digest",
-						"sha256:32da30332506740a2f7c34d5dc70467b7f14ec67d912703568daff790ab3f755",
+						"sha256:b4af4f8b6470febf45dc10f564551af682a802eda1743055a7dfc8332dffa595",
 					),
 					resource.TestCheckResourceAttr(
 						resourceName,

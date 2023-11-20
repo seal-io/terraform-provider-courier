@@ -52,14 +52,14 @@ setup() {
     COURIER_DEPENDENT=true "${ROOT_DIR}/openjdk/linux/service.sh" setup "${art}"
   fi
 
-  uri="https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.13/bin/apache-tomcat-10.1.13.tar.gz"
-  dest="/tmp/apache-tomcat-10.1.13.tar.gz"
-  download "${uri}" "${dest}" "sha256:bda470fbf91ad080ca043c0c092d2e334e9c147ded6bf1e5141893f97101c52c"
-  if [ ! -e "${COURIER_PATH}/${art}/apache-tomcat-10.1.13" ]; then
+  uri="https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.16/bin/apache-tomcat-10.1.16.tar.gz"
+  dest="/tmp/apache-tomcat-10.1.16.tar.gz"
+  download "${uri}" "${dest}" "sha512:d469d0c68cf5e321bbc264c3148d28899e320942f34636e0aff3d79fc43e8472cd0420d0d3df5ef6ece4be4810a3f8fd518f605c5a9c13cac4e8f96f5f138e92"
+  if [ ! -e "${COURIER_PATH}/${art}/apache-tomcat-10.1.16" ]; then
     ### Copy
     ${rc} "cp ${dest} ${COURIER_PATH}/${art}/"
-    uncompress "${COURIER_PATH}/${art}/apache-tomcat-10.1.13.tar.gz"
-    ${rc} "ln -s ${COURIER_PATH}/${art}/apache-tomcat-10.1.13 ${COURIER_PATH}/${art}/tomcat"
+    uncompress "${COURIER_PATH}/${art}/apache-tomcat-10.1.16.tar.gz"
+    ${rc} "ln -s ${COURIER_PATH}/${art}/apache-tomcat-10.1.16 ${COURIER_PATH}/${art}/tomcat"
     ### Clean
     ${rc} "rm -rf ${COURIER_PATH}/${art}/tomcat/webapps/manager"
     ${rc} "rm -rf ${COURIER_PATH}/${art}/tomcat/webapps/host-manager"
