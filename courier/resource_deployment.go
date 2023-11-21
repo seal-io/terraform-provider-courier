@@ -168,8 +168,12 @@ func (r *ResourceDeployment) Apply(
 					j = m
 				}
 
-				partialDeploy := deploy
-				partialDeploy.Targets = deploy.Targets[i:j]
+				partialDeploy := *deploy
+				if i == m-1 {
+					partialDeploy.Targets = []DeploymentTarget{deploy.Targets[i]}
+				} else {
+					partialDeploy.Targets = append([]DeploymentTarget(nil), deploy.Targets[i:j]...)
+				}
 
 				if prevArt != nil && !prevArt.ID.Equal(r.Artifact.ID) {
 					diags.Append(partialDeploy.Stop(ctx)...)
