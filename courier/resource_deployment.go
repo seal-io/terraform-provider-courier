@@ -1028,10 +1028,10 @@ func (r *ResourceDeployment) Update(
 		return
 	}
 
+	plan.ID = state.ID
+
 	if plan.TargetsChanged(state) {
 		tflog.Debug(ctx, "Targets changed, applying again...")
-
-		plan.ID = state.ID
 
 		// Diff.
 		planTargetsIndex := make(map[string]struct{}, len(plan.Targets))
