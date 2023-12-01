@@ -75,6 +75,10 @@ data "courier_target" "test" {
     }
     insecure = true
   }
+
+  timeouts = {
+    read = "5m"
+  }
 }
 `
 

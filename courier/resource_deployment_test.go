@@ -95,6 +95,11 @@ resource "courier_deployment" "test" {
   artifact = data.courier_artifact.test
   targets  = data.courier_target.test
   runtime  = data.courier_runtime.test
+  
+  timeouts = {
+    create = "5m"
+    update = "5m"
+  }
 }
 `,
 				ConfigVariables: config.Variables{

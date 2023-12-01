@@ -29,7 +29,6 @@ variable "deployment_progress_timeout" {
 resource "courier_deployment" "example" {
   targets = [
     {
-      id   = "..."
       host = {
         address = "..."
         authn   = {
@@ -42,12 +41,10 @@ resource "courier_deployment" "example" {
   ]
 
   runtime = {
-    id    = "..."
     class = "..."
   }
 
   artifact = {
-    id    = "..."
     refer = {
       uri = "..."
     }

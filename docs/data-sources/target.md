@@ -142,7 +142,6 @@ data "courier_target" "example" {
 ### Read-Only
 
 - `arch` (String) Observes the architecture of the target.
-- `id` (String) The ID of the target.
 - `os` (String) Observes the operating system of the target.
 - `version` (String) Observes the kernel version of the target.
 

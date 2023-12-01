@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -51,14 +52,12 @@ type (
 	}
 
 	ResourceDeploymentTarget struct {
-		ID   types.String         `tfsdk:"id"`
 		Host DataSourceTargetHost `tfsdk:"host"`
 		OS   types.String         `tfsdk:"os"`
 		Arch types.String         `tfsdk:"arch"`
 	}
 
 	ResourceDeploymentArtifact struct {
-		ID      types.String            `tfsdk:"id"`
 		Refer   DataSourceArtifactRefer `tfsdk:"refer"`
 		Command types.String            `tfsdk:"command"`
 		Ports   []types.Int64           `tfsdk:"ports"`
@@ -68,7 +67,6 @@ type (
 	}
 
 	ResourceDeploymentRuntime struct {
-		ID       types.String            `tfsdk:"id"`
 		Class    types.String            `tfsdk:"class"`
 		Source   types.String            `tfsdk:"source"`
 		Authn    *DataSourceRuntimeAuthn `tfsdk:"authn"`
@@ -89,46 +87,36 @@ func NewResourceDeployment() resource.Resource {
 	return &ResourceDeployment{}
 }
 
-func (r *ResourceDeployment) Equal(l ResourceDeployment) bool {
-	if len(r.Targets) != len(l.Targets) {
+func (r *ResourceDeploymentArtifact) Equal(l ResourceDeploymentArtifact) bool {
+	if r == nil {
 		return false
-	} else {
-		rtg := append(make([]ResourceDeploymentTarget, 0, len(r.Targets)), r.Targets...)
-		ltg := append(make([]ResourceDeploymentTarget, 0, len(l.Targets)), l.Targets...)
+	}
 
-		sort.Slice(rtg, func(i, j int) bool {
-			return rtg[i].ID.ValueString() < rtg[j].ID.ValueString()
-		})
-		sort.Slice(ltg, func(i, j int) bool {
-			return ltg[i].ID.ValueString() < ltg[j].ID.ValueString()
-		})
+	return r.Refer.URI.Equal(l.Refer.URI)
+}
 
-		for i := range ltg {
-			if !rtg[i].ID.Equal(ltg[i].ID) {
-				return false
-			}
+func (r *ResourceDeployment) TargetsChanged(l ResourceDeployment) bool {
+	if len(r.Targets) != len(l.Targets) {
+		return true
+	}
+
+	rtg := append(make([]ResourceDeploymentTarget, 0, len(r.Targets)), r.Targets...)
+	ltg := append(make([]ResourceDeploymentTarget, 0, len(l.Targets)), l.Targets...)
+
+	sort.Slice(rtg, func(i, j int) bool {
+		return rtg[i].Host.Address.ValueString() < rtg[j].Host.Address.ValueString()
+	})
+	sort.Slice(ltg, func(i, j int) bool {
+		return ltg[i].Host.Address.ValueString() < ltg[j].Host.Address.ValueString()
+	})
+
+	for i := range ltg {
+		if !rtg[i].Host.Address.Equal(ltg[i].Host.Address) {
+			return true
 		}
 	}
 
-	if !r.Artifact.ID.Equal(l.Artifact.ID) {
-		return false
-	}
-
-	if !r.Runtime.ID.Equal(l.Runtime.ID) {
-		return false
-	}
-
-	if r.Strategy != nil && l.Strategy != nil {
-		return r.Strategy.Equal(*l.Strategy)
-	} else if r.Strategy != nil || l.Strategy != nil {
-		return false
-	}
-
-	return true
-}
-
-func (r *ResourceDeployment) Hash() string {
-	return strx.Sum(r.Artifact.ID.ValueString())
+	return false
 }
 
 func (r *ResourceDeployment) Apply(
@@ -175,7 +163,7 @@ func (r *ResourceDeployment) Apply(
 					partialDeploy.Targets = append([]DeploymentTarget(nil), deploy.Targets[i:j]...)
 				}
 
-				if prevArt != nil && !prevArt.ID.Equal(r.Artifact.ID) {
+				if !prevArt.Equal(r.Artifact) {
 					diags.Append(partialDeploy.Stop(ctx)...)
 					if diags.HasError() {
 						return diags
@@ -195,7 +183,7 @@ func (r *ResourceDeployment) Apply(
 	}
 
 	// Recreate.
-	if prevArt != nil && !prevArt.ID.Equal(r.Artifact.ID) {
+	if !prevArt.Equal(r.Artifact) {
 		diags.Append(deploy.Stop(ctx)...)
 		if diags.HasError() {
 			return diags
@@ -230,6 +218,7 @@ type (
 	}
 
 	Deployment struct {
+		ID       string
 		Targets  []DeploymentTarget
 		Runtime  runtime.Source
 		Artifact ResourceDeploymentArtifact
@@ -253,6 +242,7 @@ func (r *ResourceDeployment) Reflect(
 	}
 
 	deploy := &Deployment{
+		ID:       r.ID.ValueString(),
 		Targets:  make([]DeploymentTarget, 0, len(r.Targets)),
 		Runtime:  rt,
 		Artifact: r.Artifact,
@@ -432,7 +422,7 @@ func (d Deployment) Setup(ctx context.Context) diag.Diagnostics {
 		}
 		sort.Strings(volumes)
 		for i := range volumes {
-			_, _ = fmt.Fprintf(&volumesBuf, "%s\n", envs[i])
+			_, _ = fmt.Fprintf(&volumesBuf, "%s\n", volumes[i])
 		}
 		err = os.WriteFile( //nolint:gosec
 			fmt.Sprintf("%s/volumes", tmpDir),
@@ -457,7 +447,7 @@ func (d Deployment) Setup(ctx context.Context) diag.Diagnostics {
 				return t.UploadDirectory(
 					ctx,
 					os.DirFS(tmpDir),
-					fmt.Sprintf("/var/local/courier/artifact/%s", art.ID.ValueString()))
+					fmt.Sprintf("/var/local/courier/artifact/%s", d.ID))
 			})
 		}
 
@@ -474,7 +464,7 @@ func (d Deployment) Setup(ctx context.Context) diag.Diagnostics {
 	{
 		args := []string{
 			"setup",
-			art.ID.ValueString(),
+			d.ID,
 			art.Refer.URI.ValueString(),
 			art.Digest.ValueString(),
 		}
@@ -495,15 +485,15 @@ func (d Deployment) Setup(ctx context.Context) diag.Diagnostics {
 }
 
 func (d Deployment) Start(ctx context.Context) diag.Diagnostics {
-	return d.execute(ctx, "start", d.Artifact.ID.ValueString())
+	return d.execute(ctx, "start", d.ID)
 }
 
 func (d Deployment) Stop(ctx context.Context) diag.Diagnostics {
-	return d.execute(ctx, "stop", d.Artifact.ID.ValueString())
+	return d.execute(ctx, "stop", d.ID)
 }
 
 func (d Deployment) Cleanup(ctx context.Context) diag.Diagnostics {
-	return d.execute(ctx, "cleanup", d.Artifact.ID.ValueString())
+	return d.execute(ctx, "cleanup", d.ID)
 }
 
 func (d Deployment) execute(ctx context.Context, args ...string) diag.Diagnostics {
@@ -618,10 +608,6 @@ func (r *ResourceDeployment) Schema(
 				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"id": schema.StringAttribute{
-							Required:    true,
-							Description: `The ID of the target.`,
-						},
 						"host": schema.SingleNestedAttribute{
 							Required:    true,
 							Description: `Specify the target to access.`,
@@ -773,18 +759,17 @@ when accessing the proxy, either password or private key.`,
 				Required:    true,
 				Description: `The runtime of the deployment.`,
 				Attributes: map[string]schema.Attribute{
-					"id": schema.StringAttribute{
+					"class": schema.StringAttribute{
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.RequiresReplace(),
 						},
 						Required:    true,
-						Description: `The ID of the runtime.`,
-					},
-					"class": schema.StringAttribute{
-						Required:    true,
 						Description: `Specify the class of the runtime.`,
 					},
 					"source": schema.StringAttribute{
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Optional: true,
 						Description: `The source to fetch the runtime, 
 only support a git repository at present.
@@ -840,16 +825,12 @@ only support a git repository at present.
 				},
 			},
 			"artifact": schema.SingleNestedAttribute{
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.RequiresReplace(),
+				},
 				Required:    true,
 				Description: `The artifact of the deployment.`,
 				Attributes: map[string]schema.Attribute{
-					"id": schema.StringAttribute{
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.RequiresReplace(),
-						},
-						Required:    true,
-						Description: `The ID of the artifact.`,
-					},
 					"refer": schema.SingleNestedAttribute{
 						Required:    true,
 						Description: `The reference of the artifact.`,
@@ -1002,7 +983,9 @@ func (r *ResourceDeployment) Create(
 		return
 	}
 
-	plan.ID = types.StringValue(plan.Hash())
+	plan.ID = types.StringValue(strx.Sum(
+		plan.Artifact.Refer.URI.ValueString(),
+		strx.Hex(64)))
 
 	{
 		// Get timeout.
@@ -1045,20 +1028,20 @@ func (r *ResourceDeployment) Update(
 		return
 	}
 
-	plan.ID = types.StringValue(plan.Hash())
+	if plan.TargetsChanged(state) {
+		tflog.Debug(ctx, "Targets changed, applying again...")
 
-	if !plan.Equal(state) {
-		tflog.Debug(ctx, "Changed, applying again...")
+		plan.ID = state.ID
 
 		// Diff.
 		planTargetsIndex := make(map[string]struct{}, len(plan.Targets))
 		for i := range plan.Targets {
-			planTargetsIndex[plan.Targets[i].ID.ValueString()] = struct{}{}
+			planTargetsIndex[plan.Targets[i].Host.Address.ValueString()] = struct{}{}
 		}
 
 		releaseTargets := make([]ResourceDeploymentTarget, 0, len(state.Targets))
 		for i := range state.Targets {
-			if _, ok := planTargetsIndex[state.Targets[i].ID.ValueString()]; ok {
+			if _, ok := planTargetsIndex[state.Targets[i].Host.Address.ValueString()]; ok {
 				continue
 			}
 			releaseTargets = append(releaseTargets, state.Targets[i])

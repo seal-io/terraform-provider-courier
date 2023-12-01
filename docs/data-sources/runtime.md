@@ -77,7 +77,6 @@ only support a git repository at present.
 ### Read-Only
 
 - `classes` (Map of List of String) Observes the classes of the runtime.
-- `id` (String) The ID of the runtime.
 
 <a id="nestedatt--authn"></a>
 ### Nested Schema for `authn`

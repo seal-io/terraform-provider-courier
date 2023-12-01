@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/target"
-	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
 var _ datasource.DataSource = (*DataSourceTarget)(nil)
@@ -26,7 +25,6 @@ type (
 		Host     DataSourceTargetHost `tfsdk:"host"`
 		Timeouts timeouts.Value       `tfsdk:"timeouts"`
 
-		ID      types.String `tfsdk:"id"`
 		OS      types.String `tfsdk:"os"`
 		Arch    types.String `tfsdk:"arch"`
 		Version types.String `tfsdk:"version"`
@@ -61,14 +59,6 @@ type (
 
 func NewDataSourceTarget() datasource.DataSource {
 	return &DataSourceTarget{}
-}
-
-func (r *DataSourceTarget) Equal(l DataSourceTarget) bool {
-	return r.Host.Address.Equal(l.Host.Address)
-}
-
-func (r *DataSourceTarget) Hash() string {
-	return strx.Sum(r.Host.Address.ValueString())
 }
 
 func (r *DataSourceTarget) State(
@@ -253,10 +243,6 @@ either password or private key.`,
 				},
 			},
 			"timeouts": timeouts.Attributes(ctx),
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: `The ID of the target.`,
-			},
 			"os": schema.StringAttribute{
 				Computed:    true,
 				Description: `Observes the operating system of the target.`,
@@ -284,8 +270,6 @@ func (r *DataSourceTarget) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	plan.ID = types.StringValue(plan.Hash())
 
 	{
 		// Get Timeout.

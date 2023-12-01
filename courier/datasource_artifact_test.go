@@ -27,6 +27,10 @@ data "courier_artifact" "test" {
   }
 
   ports = ["8080"]
+
+  timeouts = {
+    read = "5m"
+  }
 }`,
 				ConfigVariables: config.Variables{
 					"uri": config.StringVariable(

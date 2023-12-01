@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/runtime"
-	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
 var _ datasource.DataSource = (*DataSourceRuntime)(nil)
@@ -30,7 +29,6 @@ type (
 		Insecure types.Bool              `tfsdk:"insecure"`
 		Timeouts timeouts.Value          `tfsdk:"timeouts"`
 
-		ID      types.String          `tfsdk:"id"`
 		Classes map[string]types.List `tfsdk:"classes"`
 	}
 
@@ -43,14 +41,6 @@ type (
 
 func NewDataSourceRuntime() datasource.DataSource {
 	return &DataSourceRuntime{}
-}
-
-func (r *DataSourceRuntime) Equal(l DataSourceRuntime) bool {
-	return r.Source.Equal(l.Source) && r.Class.Equal(l.Class)
-}
-
-func (r *DataSourceRuntime) Hash() string {
-	return strx.Sum(r.Source.ValueString(), r.Class.ValueString())
 }
 
 func (r *DataSourceRuntime) Metadata(
@@ -130,10 +120,6 @@ only support a git repository at present.
 				Description: `Specify to fetch the runtime with insecure mode.`,
 			},
 			"timeouts": timeouts.Attributes(ctx),
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: `The ID of the runtime.`,
-			},
 			"classes": schema.MapAttribute{
 				Computed:    true,
 				Description: `Observes the classes of the runtime.`,
@@ -178,8 +164,6 @@ func (r *DataSourceRuntime) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	plan.ID = types.StringValue(plan.Hash())
 
 	var src runtime.Source
 	{

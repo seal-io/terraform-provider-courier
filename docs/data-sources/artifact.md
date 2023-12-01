@@ -113,7 +113,6 @@ data "courier_artifact" "example" {
 
 - `digest` (String) Observes the digest of the artifact, 
 in form of algorithm:checksum.
-- `id` (String) The ID of the artifact.
 - `length` (Number) Observes the content length of the artifact,
 may not be available for all types of artifact.
 - `type` (String) Observes the type of the artifact.

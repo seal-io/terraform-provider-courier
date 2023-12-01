@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/seal-io/terraform-provider-courier/pkg/artifact"
-	"github.com/seal-io/terraform-provider-courier/utils/strx"
 )
 
 var _ datasource.DataSource = (*DataSourceArtifact)(nil)
@@ -30,7 +29,6 @@ type (
 		Volumes  []types.String          `tfsdk:"volumes"`
 		Timeouts timeouts.Value          `tfsdk:"timeouts"`
 
-		ID     types.String `tfsdk:"id"`
 		Digest types.String `tfsdk:"digest"`
 		Type   types.String `tfsdk:"type"`
 		Length types.Int64  `tfsdk:"length"`
@@ -51,14 +49,6 @@ type (
 
 func NewDataSourceArtifact() datasource.DataSource {
 	return &DataSourceArtifact{}
-}
-
-func (r *DataSourceArtifact) Equal(l DataSourceArtifact) bool {
-	return r.Refer.URI.Equal(l.Refer.URI)
-}
-
-func (r *DataSourceArtifact) Hash() string {
-	return strx.Sum(r.Refer.URI.ValueString())
 }
 
 func (r *DataSourceArtifact) State(
@@ -200,10 +190,6 @@ func (r *DataSourceArtifact) Schema(
 				Create: true,
 				Update: true,
 			}),
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: `The ID of the artifact.`,
-			},
 			"digest": schema.StringAttribute{
 				Computed: true,
 				Description: `Observes the digest of the artifact, 
@@ -233,8 +219,6 @@ func (r *DataSourceArtifact) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	plan.ID = types.StringValue(plan.Hash())
 
 	{
 		// Get Timeout.

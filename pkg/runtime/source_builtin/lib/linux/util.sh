@@ -238,7 +238,7 @@ download() {
     case "${authn_type}" in
     basic) download_cmd="curl --user \"${authn_user}:${authn_secret}\" --retry 3 --retry-all-errors --retry-delay 3 -fsSL -o \"${dest}\" \"${uri}\"" ;;
     bearer) download_cmd="curl --header \"Authorization: Bearer ${authn_secret}\" --retry 3 --retry-all-errors --retry-delay 3 -fsSL -o \"${dest}\" \"${uri}\"" ;;
-    *) download_cmd="curl --retry 3 --retry-all-errors --retry-delay 3 -fsSL -o \"${dest}\" \"${uri}\"" ;;
+    *) download_cmd="curl --retry 3 --retry-delay 3 -fsSL -o \"${dest}\" \"${uri}\"" ;;
     esac
   elif command_exists wget; then
     case "${authn_type}" in

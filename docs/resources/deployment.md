@@ -44,7 +44,6 @@ variable "deployment_progress_timeout" {
 resource "courier_deployment" "example" {
   targets = [
     {
-      id   = "..."
       host = {
         address = "..."
         authn   = {
@@ -57,12 +56,10 @@ resource "courier_deployment" "example" {
   ]
 
   runtime = {
-    id    = "..."
     class = "..."
   }
 
   artifact = {
-    id    = "..."
     refer = {
       uri = "..."
     }
@@ -107,7 +104,6 @@ resource "courier_deployment" "example" {
 
 Required:
 
-- `id` (String) The ID of the artifact.
 - `refer` (Attributes) The reference of the artifact. (see [below for nested schema](#nestedatt--artifact--refer))
 
 Optional:
@@ -151,7 +147,6 @@ Optional:
 Required:
 
 - `class` (String) Specify the class of the runtime.
-- `id` (String) The ID of the runtime.
 
 Optional:
 
@@ -200,7 +195,6 @@ Required:
 
 - `arch` (String) The architecture of the target.
 - `host` (Attributes) Specify the target to access. (see [below for nested schema](#nestedatt--targets--host))
-- `id` (String) The ID of the target.
 - `os` (String) The operating system of the target.
 
 <a id="nestedatt--targets--host"></a>

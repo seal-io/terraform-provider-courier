@@ -29,18 +29,17 @@ data "courier_runtime" "test" {
 						resourceName,
 						"classes.tomcat.#",
 					),
-					resource.TestCheckResourceAttr(
-						resourceName,
-						"id",
-						"0efd5dbf5f4ebc3d",
-					),
 				),
 			},
 			{
 				Config: `
 data "courier_runtime" "test" {
-    source = "https://github.com/seal-io/terraform-provider-courier//pkg/runtime/source_builtin?ref=v0.0.1"
-	class  = "tomcat"
+  source = "https://github.com/seal-io/terraform-provider-courier//pkg/runtime/source_builtin?ref=v0.0.1"
+  class  = "tomcat"
+
+  timeouts = {
+    read = "5m"
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -52,11 +51,6 @@ data "courier_runtime" "test" {
 					resource.TestCheckResourceAttrSet(
 						resourceName,
 						"classes.tomcat.#",
-					),
-					resource.TestCheckResourceAttr(
-						resourceName,
-						"id",
-						"22505c31b3d5d641",
 					),
 				),
 			},
