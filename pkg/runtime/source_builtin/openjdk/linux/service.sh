@@ -118,7 +118,7 @@ After=syslog.target network.target
 WantedBy=multi-user.target
 
 [Service]
-Type=forking
+Type=simple
 
 Restart=on-failure
 RestartSec=10
